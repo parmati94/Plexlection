@@ -74,30 +74,93 @@
 
   <!-- Item table -->
   <div x-show="itemCount > 0" style="display: none;">
-    <div class="mb-3 flex flex-wrap items-center gap-2 text-body-s">
-      <!-- 21k episodes make an unfiltered table useless, so type comes first. -->
-      <span class="text-ink-muted">Type:</span>
-      <template x-for="t in [{k:'',l:'All'},{k:'movie',l:'Movies'},{k:'show',l:'Shows'},{k:'episode',l:'Episodes'}]" :key="t.k">
-        <button @click="setTypeFilter(t.k)"
-                class="rounded-full border px-2.5 py-0.5 transition-colors"
-                :class="typeFilter === t.k
-                  ? 'border-accent-500 bg-accent-500/10 text-accent-300'
-                  : 'border-line-strong text-ink-muted hover:bg-raised'"
-                x-text="t.l"></button>
-      </template>
-      <span class="mx-1 text-ink-faint">·</span>
-      <span class="text-ink-muted">Path:</span>
-      <template x-for="f in [{k:'',l:'All'},{k:'mapped',l:'Mapped'},{k:'unmapped',l:'Unmapped'},{k:'missing',l:'Missing'}]" :key="f.k">
-        <button @click="setLibraryFilter(f.k)"
-                class="rounded-full border px-2.5 py-0.5 transition-colors"
-                :class="libraryFilter === f.k
-                  ? 'border-accent-500 bg-accent-500/10 text-accent-300'
-                  : 'border-line-strong text-ink-muted hover:bg-raised'"
-                x-text="f.l"></button>
-      </template>
-      <span class="ml-auto tabular text-ink-muted"
-            x-text="`${items.length} of ${itemTotal}`"></span>
+    <!-- Two filter rows rather than one wrapping line: at 390px a single row
+         wraps mid-group and strands the separator on its own. -->
+    <div class="mb-3 space-y-2 text-body-s">
+      <div class="no-scrollbar flex items-center gap-2 overflow-x-auto">
+        <!-- 21k episodes make an unfiltered table useless, so type comes first. -->
+        <span class="shrink-0 text-ink-muted">Type</span>
+        <template x-for="t in [{k:'',l:'All'},{k:'movie',l:'Movies'},{k:'show',l:'Shows'},{k:'episode',l:'Episodes'}]" :key="t.k">
+          <button @click="setTypeFilter(t.k)"
+                  class="shrink-0 rounded-full border px-2.5 py-0.5 transition-colors"
+                  :class="typeFilter === t.k
+                    ? 'border-accent-500 bg-accent-500/10 text-accent-300'
+                    : 'border-line-strong text-ink-muted hover:bg-raised'"
+                  x-text="t.l"></button>
+        </template>
+      </div>
+      <div class="no-scrollbar flex items-center gap-2 overflow-x-auto">
+        <span class="shrink-0 text-ink-muted">Path</span>
+        <template x-for="f in [{k:'',l:'All'},{k:'mapped',l:'Mapped'},{k:'unmapped',l:'Unmapped'},{k:'missing',l:'Missing'}]" :key="f.k">
+          <button @click="setLibraryFilter(f.k)"
+                  class="shrink-0 rounded-full border px-2.5 py-0.5 transition-colors"
+                  :class="libraryFilter === f.k
+                    ? 'border-accent-500 bg-accent-500/10 text-accent-300'
+                    : 'border-line-strong text-ink-muted hover:bg-raised'"
+                  x-text="f.l"></button>
+        </template>
+        <!-- The count used to sit at the end of this row, where the horizontal
+             scroll clipped it on narrow screens. It belongs outside. -->
+        <span class="ml-auto hidden shrink-0 tabular text-ink-muted sm:inline"
+              x-text="`${items.length} of ${itemTotal}`"></span>
+      </div>
     </div>
+
+    <!-- ── Mobile: cards ────────────────────────────────────────────────────
+         A six-column fixed table cannot fit 390px. The widths total 480, so
+         table-fixed starved the one auto column and titles rendered at 0px
+         wide — invisible. Below sm each row becomes a card instead. -->
+    <div class="space-y-2 sm:hidden">
+      <div class="flex items-center gap-2 text-body-s">
+        <span class="text-ink-muted">Sort</span>
+        <select @change="setLibrarySort($event.target.value)"
+                class="rounded-lg border border-line-strong bg-surface px-2 py-1 text-body-s focus:border-accent-500 focus:outline-none">
+          <template x-for="s in [{k:'title',l:'Title'},{k:'year',l:'Year'},{k:'size',l:'Size'}]" :key="s.k">
+            <option :value="s.k" :selected="librarySort === s.k" x-text="s.l"></option>
+          </template>
+        </select>
+        <button @click="setLibrarySort(librarySort)"
+                class="rounded-lg border border-line-strong px-2 py-1 text-ink-muted"
+                x-text="librarySortDir === 'asc' ? '▲ Asc' : '▼ Desc'"></button>
+        <span class="ml-auto tabular text-ink-muted"
+              x-text="`${items.length} of ${itemTotal}`"></span>
+      </div>
+
+      <template x-for="item in items" :key="item.id">
+        <button @click="openItem(item.id)"
+                class="flex w-full items-start gap-3 rounded-xl border border-line bg-surface p-3 text-left hover:bg-raised/70">
+          <div class="flex w-8 shrink-0 justify-center pt-1">
+            <template x-if="item.facts?.video?.dar">
+              <div class="ar-glyph" :class="arTone(item)"
+                   :style="`--ar:${item.facts.video.dar}`"></div>
+            </template>
+            <template x-if="!item.facts?.video?.dar">
+              <span class="font-mono text-micro text-ink-faint"
+                    x-text="item.item_type === 'show'
+                      ? `${item.facts?.show?.episode_count ?? item.leaf_count ?? 0}ep` : '—'"></span>
+            </template>
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="truncate font-medium text-ink" x-text="item.title"></p>
+            <p class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-micro text-ink-muted">
+              <span x-show="item.item_type !== 'movie'" class="rounded bg-raised px-1 font-mono"
+                    x-text="item.item_type === 'show'
+                      ? 'series'
+                      : `S${String(item.season_number ?? 0).padStart(2,'0')}E${String(item.episode_number ?? 0).padStart(2,'0')}`"></span>
+              <span x-show="item.year" x-text="item.year"></span>
+              <span x-show="item.file_size" x-text="formatBytes(item.file_size)"></span>
+              <span x-show="item.path_status !== 'mapped'"
+                    :class="item.path_status === 'missing' ? 'text-danger-400' : 'text-warn-400'"
+                    x-text="item.path_status"></span>
+              <span class="text-ink-faint" x-text="`${item.fact_count || 0} facts`"></span>
+            </p>
+          </div>
+        </button>
+      </template>
+    </div>
+
+    <!-- ── Desktop: the table ─────────────────────────────────────────────── -->
+    <div class="hidden sm:block">
 
     <div class="overflow-hidden rounded-xl border border-line">
       <table class="w-full table-fixed text-body">
@@ -113,31 +176,49 @@
             <th class="w-28 cursor-pointer px-4 py-3 hover:text-ink" @click="setLibrarySort('size')">
               Size <span x-show="librarySort === 'size'" x-text="librarySortDir === 'asc' ? '▲' : '▼'"></span>
             </th>
-            <th class="w-32 px-4 py-3">Path</th>
-            <th class="w-20 px-4 py-3">Facts</th>
+            <th class="hidden w-32 px-4 py-3 lg:table-cell">Path</th>
+            <th class="hidden w-20 px-4 py-3 md:table-cell">Facts</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-line">
           <template x-for="item in items" :key="item.id">
             <tr @click="openItem(item.id)" class="cursor-pointer bg-surface/60 hover:bg-raised/70">
               <!-- The signature: the frame drawn at its real proportion, so the
-                   shape reads before the number does. -->
+                   shape reads before the number does. Only where there IS a
+                   frame — a show has no file, and defaulting it to 1.78 would
+                   claim a shape it doesn't have. -->
               <td class="px-4 py-3">
-                <div class="ar-glyph" :class="arTone(item)"
-                     :style="`--ar:${item.facts?.video?.dar ?? 1.78}`"
-                     :title="item.facts?.video?.dar
-                       ? `${item.facts.video.dar}:1 — ${item.facts.video.aspect_bucket ?? ''}`
-                       : 'not scanned yet'"></div>
+                <template x-if="item.facts?.video?.dar">
+                  <div class="ar-glyph" :class="arTone(item)"
+                       :style="`--ar:${item.facts.video.dar}`"
+                       :title="`${item.facts.video.dar}:1 — ${item.facts.video.aspect_bucket ?? ''}`"></div>
+                </template>
+                <template x-if="!item.facts?.video?.dar && item.item_type === 'show'">
+                  <span class="font-mono text-micro text-ink-faint"
+                        :title="`${item.facts?.show?.episode_count ?? 0} episodes indexed`"
+                        x-text="`${item.facts?.show?.episode_count ?? item.leaf_count ?? 0}ep`"></span>
+                </template>
+                <template x-if="!item.facts?.video?.dar && item.item_type !== 'show'">
+                  <div class="ar-glyph text-ink-faint/30" title="not scanned yet"></div>
+                </template>
               </td>
               <td class="max-w-0 px-4 py-3">
-                <p class="truncate font-medium text-ink" x-text="item.title"></p>
+                <div class="flex items-center gap-2">
+                  <!-- Mixed types in one table: say which without a whole column. -->
+                  <span x-show="item.item_type !== 'movie'"
+                        class="shrink-0 rounded bg-raised px-1.5 py-0.5 font-mono text-micro text-ink-muted"
+                        x-text="item.item_type === 'show'
+                          ? 'series'
+                          : `S${String(item.season_number ?? 0).padStart(2,'0')}E${String(item.episode_number ?? 0).padStart(2,'0')}`"></span>
+                  <p class="truncate font-medium text-ink" x-text="item.title"></p>
+                </div>
                 <p class="truncate font-mono text-micro text-ink-faint"
-                   :title="item.local_path ?? item.plex_path"
-                   x-text="item.local_path ?? item.plex_path"></p>
+                   :title="item.local_path ?? item.plex_path ?? ''"
+                   x-text="item.local_path ?? item.plex_path ?? '—'"></p>
               </td>
               <td class="tabular px-4 py-3 text-ink-muted" x-text="item.year ?? '—'"></td>
               <td class="tabular px-4 py-3 text-ink-muted" x-text="formatBytes(item.file_size)"></td>
-              <td class="px-4 py-3">
+              <td class="hidden px-4 py-3 lg:table-cell">
                 <span class="rounded-full px-2 py-0.5 text-micro"
                       :class="{
                         'bg-ok-900/40 text-ok-400': item.path_status === 'mapped',
@@ -147,12 +228,13 @@
                       }"
                       x-text="item.path_status"></span>
               </td>
-              <td class="tabular px-4 py-3 text-ink-muted" x-text="item.fact_count || '—'"></td>
+              <td class="tabular hidden px-4 py-3 text-ink-muted md:table-cell" x-text="item.fact_count || '—'"></td>
             </tr>
           </template>
         </tbody>
       </table>
     </div>
+    </div><!-- /desktop table -->
 
     <div x-show="hasMoreItems" class="mt-3 text-center">
       <button @click="loadMoreItems()" :disabled="itemsLoading"

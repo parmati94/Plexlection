@@ -11,12 +11,24 @@
     </div>
     <div class="flex items-center gap-2">
       <button @click="startScan({ discover: true })" :disabled="scanActive || !plexConfigured"
-              class="rounded-lg bg-accent-600 px-3 py-1.5 text-body font-medium text-white hover:bg-accent-500 disabled:opacity-50">
+              class="rounded-lg bg-accent-600 px-3 py-1.5 text-body font-medium text-white hover:bg-accent-500 disabled:opacity-50"
+              title="Re-read the catalogue from Plex, then compute any missing facts">
         <span x-text="scanActive ? 'Scanning…' : 'Scan library'"></span>
+      </button>
+      <!-- Discovery is the one part that isn't incremental: it re-enumerates
+           every item to catch deletions and ratingKey rotation, ~2 min for 24k
+           items. Skipping it is the common case when you discovered minutes ago
+           and just want the fact pass to finish. -->
+      <button @click="startScan({ discover: false })"
+              :disabled="scanActive || !plexConfigured"
+              class="rounded-lg border border-line-strong px-3 py-1.5 text-body text-ink hover:bg-raised disabled:opacity-50"
+              title="Skip the Plex re-enumeration and go straight to computing facts">
+        Facts only
       </button>
       <button @click="startScan({ providers: [], discover: true })"
               :disabled="scanActive || !plexConfigured"
-              class="rounded-lg border border-line-strong px-3 py-1.5 text-body text-ink hover:bg-raised disabled:opacity-50">
+              class="rounded-lg border border-line-strong px-3 py-1.5 text-body text-ink hover:bg-raised disabled:opacity-50"
+              title="Re-read the catalogue from Plex without computing anything">
         Discovery only
       </button>
     </div>

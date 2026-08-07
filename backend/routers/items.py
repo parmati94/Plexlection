@@ -54,7 +54,8 @@ async def list_items(
     )
     rows = await startup.db.fetch_all(
         f"SELECT id, rating_key, title, year, item_type, path_status, local_path, "
-        f"       plex_path, file_size, plex_added_at, facts "
+        f"       plex_path, file_size, plex_added_at, "
+        f"       parent_key, season_number, episode_number, leaf_count, facts "
         f"FROM items WHERE {clause} ORDER BY {order} LIMIT ? OFFSET ?",
         (*params, limit, offset),
     )
