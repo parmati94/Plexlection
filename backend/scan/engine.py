@@ -162,6 +162,44 @@ class ScanEngine:
     def request_cancel(self) -> None:
         self._cancel.set()
 
+    def with_dependents(self, provider_ids: list[str]) -> list[str]:
+        """Add cheap providers that read what the named ones produce.
+
+        Recomputing a provider in isolation leaves its dependents describing
+        inputs that no longer exist. That's how `derived` ended up with no
+        is_foreign or is_box_office_bomb: it ran before TMDB was configured,
+        then TMDB was recomputed on its own and nothing re-derived from it.
+
+        Only FREE and CHEAP dependents are pulled in. An EXPENSIVE one —
+        cropdetect reading ffprobe's output — must never start hours of frame
+        decoding because someone reprobed a file; it's reported as stale and
+        left for an explicit run.
+        """
+        selected = set(provider_ids)
+        deferred: set[str] = set()
+        changed = True
+        while changed:
+            changed = False
+            for p in self.providers.values():
+                if p.id in selected or not any(d in selected for d in p.depends_on):
+                    continue
+                if COST_ORDER[p.cost] <= COST_ORDER[CostTier.CHEAP]:
+                    selected.add(p.id)
+                    changed = True
+                else:
+                    deferred.add(p.id)
+
+        added = selected - set(provider_ids)
+        if added:
+            logger.info("↳ also running dependents: %s", ", ".join(sorted(added)))
+        if deferred - selected:
+            logger.warning(
+                "↳ %s depend(s) on this and are now stale, but are too expensive "
+                "to run automatically — start them explicitly.",
+                ", ".join(sorted(deferred - selected)),
+            )
+        return sorted(selected)
+
     # ── planning ──────────────────────────────────────────────────────────
     async def plan(self, provider, force: bool = False) -> list[ItemRow]:
         """Items this provider should run against."""
@@ -218,6 +256,9 @@ class ScanEngine:
             self._cancel.clear()
             outcome = ScanOutcome(run_id=run_id)
             self.partial = outcome
+
+            if provider_ids is not None:
+                provider_ids = self.with_dependents(provider_ids)
 
             selected = [
                 p for p in self.providers.values()
@@ -383,12 +424,21 @@ class ScanEngine:
         total = await self.db.fetch_val(
             "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL", default=0
         )
+        # Staleness is only comparable in SQL for providers that fingerprint the
+        # file. Everything else hashes API ids or other facts, so input_fp never
+        # equals file_fp and they'd report 100% stale forever.
+        file_fp_providers = [
+            p.id for p in self.providers.values() if getattr(p, "file_fingerprinted", False)
+        ]
+        placeholders = ",".join("?" * len(file_fp_providers)) or "NULL"
         rows = await self.db.fetch_all(
-            "SELECT p.provider, p.status, COUNT(*) AS n, "
-            "       SUM(CASE WHEN p.input_fp IS NOT NULL AND i.file_fp IS NOT NULL "
-            "                AND p.input_fp != i.file_fp THEN 1 ELSE 0 END) AS stale "
-            "FROM fact_provenance p JOIN items i ON i.id = p.item_id "
-            "WHERE i.deleted_at IS NULL GROUP BY p.provider, p.status"
+            f"SELECT p.provider, p.status, COUNT(*) AS n, "
+            f"       SUM(CASE WHEN p.provider IN ({placeholders}) "
+            f"                AND p.input_fp IS NOT NULL AND i.file_fp IS NOT NULL "
+            f"                AND p.input_fp != i.file_fp THEN 1 ELSE 0 END) AS stale "
+            f"FROM fact_provenance p JOIN items i ON i.id = p.item_id "
+            f"WHERE i.deleted_at IS NULL GROUP BY p.provider, p.status",
+            tuple(file_fp_providers),
         )
 
         out: dict[str, dict] = {}

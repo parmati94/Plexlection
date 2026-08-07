@@ -73,7 +73,11 @@ export function scanMixin() {
           providers: providers ?? (this.selectedProviders.length ? this.selectedProviders : null),
           force,
           discover,
-          max_cost: 'cheap',
+          // 'network' so a plain "Scan library" includes TMDB and Tautulli.
+          // Capping at 'cheap' silently skipped both, which is why they had to
+          // be recomputed by hand — and why anything derived from them stayed
+          // empty. Expensive providers still have to be asked for by name.
+          max_cost: 'network',
         });
         this.showToast('Scan started.');
       } catch (e) {

@@ -113,6 +113,7 @@ class FFprobeProvider(FactProvider):
     batch_size = 1
     max_age_s = None  # immutable until the file changes
     default_concurrency = 4
+    file_fingerprinted = True
 
     facts = (
         # ── video ─────────────────────────────────────────────────────────
