@@ -454,38 +454,57 @@ class ScanEngine:
             p.id for p in self.providers.values() if getattr(p, "file_fingerprinted", False)
         ]
         placeholders = ",".join("?" * len(file_fp_providers)) or "NULL"
+        # Grouped by item_type as well as provider: a single aggregate can't
+        # answer "how many of my movies are done vs my episodes", and with
+        # 21,385 episodes against 2,088 movies the big number drowns the small
+        # one entirely.
         rows = await self.db.fetch_all(
-            f"SELECT p.provider, p.status, COUNT(*) AS n, "
+            f"SELECT p.provider, i.item_type, p.status, COUNT(*) AS n, "
             f"       SUM(CASE WHEN p.provider IN ({placeholders}) "
             f"                AND p.input_fp IS NOT NULL AND i.file_fp IS NOT NULL "
             f"                AND p.input_fp != i.file_fp THEN 1 ELSE 0 END) AS stale "
             f"FROM fact_provenance p JOIN items i ON i.id = p.item_id "
-            f"WHERE i.deleted_at IS NULL GROUP BY p.provider, p.status",
+            f"WHERE i.deleted_at IS NULL GROUP BY p.provider, i.item_type, p.status",
             tuple(file_fp_providers),
         )
 
         catalogue = sum(per_type.values())
-        out: dict[str, dict] = {}
-        for provider_id, provider in self.providers.items():
-            out[provider_id] = {
+        # Plural labels the UI can show directly, rather than each caller
+        # inventing its own.
+        labels = {"movie": "Movies", "show": "Shows", "episode": "Episodes"}
+
+        def blank(provider) -> dict:
+            types = list(getattr(provider, "default_applies_to", ()) or per_type.keys())
+            return {
                 "known": 0, "errors": 0, "skipped": 0, "stale": 0,
                 "total": applicable(provider),
                 # The whole catalogue, so the UI can say "of 23,473 applicable"
                 # rather than implying 508 items went missing.
                 "catalogue": catalogue,
-                "applies_to": list(getattr(provider, "default_applies_to", ()) or ()),
+                "applies_to": types,
+                "by_type": {
+                    t: {"label": labels.get(t, t), "known": 0, "errors": 0,
+                        "skipped": 0, "stale": 0, "total": per_type.get(t, 0)}
+                    for t in types if per_type.get(t)
+                },
             }
+
+        out = {pid: blank(p) for pid, p in self.providers.items()}
+
         for row in rows:
-            entry = out.setdefault(
-                row["provider"],
-                {"known": 0, "errors": 0, "skipped": 0, "stale": 0,
-                 "total": catalogue, "catalogue": catalogue, "applies_to": []},
-            )
-            if row["status"] == STATUS_OK:
-                entry["known"] += row["n"]
-                entry["stale"] += row["stale"] or 0
-            elif row["status"] == STATUS_ERROR:
-                entry["errors"] += row["n"]
-            else:
-                entry["skipped"] += row["n"]
+            entry = out.get(row["provider"])
+            if entry is None:
+                continue  # provenance from a provider no longer installed
+            buckets = [entry]
+            t = entry["by_type"].get(row["item_type"])
+            if t is not None:
+                buckets.append(t)
+            for b in buckets:
+                if row["status"] == STATUS_OK:
+                    b["known"] += row["n"]
+                    b["stale"] += row["stale"] or 0
+                elif row["status"] == STATUS_ERROR:
+                    b["errors"] += row["n"]
+                else:
+                    b["skipped"] += row["n"]
         return out

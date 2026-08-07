@@ -56,6 +56,28 @@ export function scanMixin() {
       return c.total ? Math.round((c.known / c.total) * 100) : 0;
     },
 
+    /**
+     * Coverage split per item type, one row per bar.
+     *
+     * The backend supplies plural labels so every caller doesn't reinvent
+     * "movie" -> "Movies". Types with nothing indexed are dropped rather than
+     * shown as an empty 0/0 bar.
+     */
+    coverageRows(providerId) {
+      const byType = this.coverageFor(providerId).by_type ?? {};
+      return Object.entries(byType)
+        .filter(([, b]) => b.total > 0)
+        .map(([type, b]) => ({
+          type,
+          label: b.label,
+          known: b.known,
+          total: b.total,
+          errors: b.errors,
+          stale: b.stale,
+          pct: b.total ? Math.round((b.known / b.total) * 100) : 0,
+        }));
+    },
+
     toggleProvider(id) {
       const set = new Set(this.selectedProviders);
       set.has(id) ? set.delete(id) : set.add(id);

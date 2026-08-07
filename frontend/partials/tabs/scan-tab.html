@@ -91,15 +91,26 @@
 
         <template x-if="p.configured">
           <div class="mt-3">
-            <div class="flex items-baseline justify-between text-body-s">
-              <span class="text-ink-muted">Coverage</span>
-              <span class="tabular text-ink"
-                    x-text="`${coverageFor(p.id).known} / ${coverageFor(p.id).total}`"></span>
-            </div>
-            <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-raised">
-              <div class="h-full rounded-full bg-accent-500"
-                   :style="`width:${coveragePct(p.id)}%`"></div>
-            </div>
+            <!-- One bar per item type. A single aggregate can't say whether
+                 your movies are done or your episodes are, and with 21k
+                 episodes against 2k movies the large number buries the small
+                 one completely. -->
+            <template x-for="b in coverageRows(p.id)" :key="b.type">
+              <div class="mb-2">
+                <div class="flex items-baseline justify-between text-body-s">
+                  <span class="text-ink-muted" x-text="b.label"></span>
+                  <span class="tabular text-ink" x-text="`${b.known} / ${b.total}`"></span>
+                </div>
+                <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-raised">
+                  <div class="h-full rounded-full transition-all"
+                       :class="b.errors ? 'bg-warn-500' : 'bg-accent-500'"
+                       :style="`width:${b.pct}%`"></div>
+                </div>
+              </div>
+            </template>
+            <p x-show="!coverageRows(p.id).length" class="text-body-s text-ink-faint">
+              Nothing indexed for this provider yet.
+            </p>
             <div class="mt-2 flex flex-wrap gap-2 text-micro">
               <span x-show="coverageFor(p.id).stale" class="text-warn-400"
                     x-text="`${coverageFor(p.id).stale} stale`"></span>
