@@ -1,0 +1,41 @@
+name: plexlection-dev
+services:
+  plexlection:
+    image: plexlection:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - DEV_MODE=true
+        - FFMPEG_SOURCE=static
+    container_name: plexlection-dev
+    ports:
+      - "5183:80"
+    volumes:
+      - ./data:/app/data
+      # ⚠️ REPLACE with your media root, mounted READ-ONLY at the SAME path
+      # inside the container. Plex reports paths from its own filesystem view,
+      # so an identical path means no mapping is needed in Settings → Paths.
+      - /path/to/your/media:/path/to/your/media:ro
+      # Live development: backend hot-reloads via uvicorn --reload.
+      # Frontend needs `npm run build -- --watch` on the host; nginx serves dist/.
+      - ./backend:/app/backend
+      - ./frontend/dist:/usr/share/nginx/html
+      # Test/diagnostic scripts, so they can be run against the container's
+      # ffmpeg and mounts without rebuilding the image.
+      - ./scripts:/app/scripts:ro
+    environment:
+      - LOG_LEVEL=DEBUG
+      - TZ=America/New_York
+      - PYTHONUNBUFFERED=1
+      - ENABLE_LOGIN=false
+      - USERNAME=admin
+      - PASSWORD=changeme
+      - SESSION_SECRET=dev-secret-change-in-production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

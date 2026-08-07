@@ -1,0 +1,39 @@
+name: plexlection
+services:
+  plexlection:
+    image: parmati/plexlection:latest
+    container_name: plexlection
+    ports:
+      - "5182:80"
+    volumes:
+      # Instance data: SQLite database, collection posters, config.yaml.
+      - ./data:/app/data
+      # ⚠️ REPLACE with your media root, mounted READ-ONLY at the SAME path
+      # inside the container. Plex reports paths from its own filesystem view,
+      # so an identical path means no mapping is needed in Settings → Paths.
+      - /path/to/your/media:/path/to/your/media:ro
+    environment:
+      # ── Container settings ────────────────────────────────────────────────
+      - LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR
+      - TZ=America/New_York
+      # ── Authentication (optional) ─────────────────────────────────────────
+      - ENABLE_LOGIN=false
+      - USERNAME=admin
+      - PASSWORD=changeme
+      - SESSION_SECRET=change-me-in-production
+      # ── First-run seeding only ────────────────────────────────────────────
+      # These seed data/config.yaml the first time the container starts. After
+      # that the UI (Settings tab) is the source of truth and these are ignored.
+      # - PLEX_URL=http://192.168.1.10:32400
+      # - PLEX_TOKEN=
+      # - TMDB_API_KEY=
+      # - TAUTULLI_URL=http://192.168.1.10:8181
+      # - TAUTULLI_API_KEY=
+      # - MEDIA_PATH_MAP=/data/movies:/media/videos/Movies
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

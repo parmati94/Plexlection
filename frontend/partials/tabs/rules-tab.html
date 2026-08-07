@@ -1,0 +1,213 @@
+<section x-show="activeTab === 'rules'" x-cloak
+         class="mx-auto max-w-[92rem] px-4 py-6" style="display: none;">
+
+  <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 class="font-display text-xl font-bold">Rules</h2>
+      <p class="text-sm text-gray-500">
+        Conditions over any known fact. The filters below are generated from the
+        fact registry, so every provider you add appears here automatically.
+      </p>
+    </div>
+    <button @click="newRule()"
+            class="rounded-lg bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-500">
+      + New rule
+    </button>
+  </div>
+
+  <div class="grid gap-4 lg:grid-cols-[18rem_1fr]">
+
+    <!-- Rule list -->
+    <aside class="space-y-1.5">
+      <template x-if="!rules.length">
+        <p class="rounded-xl border border-dashed border-gray-800 bg-gray-900/40 px-4 py-8 text-center text-sm text-gray-500">
+          No rules yet.
+        </p>
+      </template>
+      <template x-for="r in rules" :key="r.id">
+        <div @click="editRule(r.id)"
+             class="cursor-pointer rounded-lg border px-3 py-2 transition-colors"
+             :class="editingRule?.id === r.id
+               ? 'border-accent-500 bg-accent-500/10'
+               : 'border-gray-800 bg-gray-900 hover:bg-gray-800/60'">
+          <div class="flex items-center gap-2">
+            <span class="h-1.5 w-1.5 rounded-full"
+                  :class="r.enabled ? 'bg-ok-500' : 'bg-gray-600'"></span>
+            <p class="truncate text-sm font-medium text-gray-200" x-text="r.name"></p>
+            <button @click.stop="deleteRule(r.id, r.name)"
+                    class="ml-auto text-gray-600 hover:text-danger-400">✕</button>
+          </div>
+          <p class="mt-0.5 truncate font-mono text-[10px] text-gray-600"
+             x-text="`plexlection:${r.slug}`"></p>
+          <p x-show="r.last_match_count !== null" class="tabular text-[11px] text-gray-500"
+             x-text="`${r.last_match_count} matched`"></p>
+        </div>
+      </template>
+    </aside>
+
+    <!-- Editor -->
+    <div>
+      <template x-if="!editingRule">
+        <div class="rounded-xl border border-dashed border-gray-800 bg-gray-900/40 px-6 py-16 text-center">
+          <p class="text-4xl">🧩</p>
+          <p class="mt-3 font-display text-lg font-semibold text-gray-300">Build a rule</p>
+          <p class="mx-auto mt-1 max-w-md text-sm text-gray-500">
+            Pick a fact, an operator and a value. The match count updates as you type.
+          </p>
+          <button @click="newRule()"
+                  class="mt-4 rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">
+            New rule
+          </button>
+        </div>
+      </template>
+
+      <template x-if="editingRule">
+        <div class="space-y-4">
+
+          <!-- Name / meta -->
+          <div class="rounded-xl border border-gray-800 bg-gray-900 p-4">
+            <div class="grid gap-3 sm:grid-cols-[2fr_1fr]">
+              <div>
+                <label class="mb-1 block text-xs text-gray-400">Rule name</label>
+                <input type="text" x-model="editingRule.name" @input="ruleDirty = true"
+                       placeholder="Ultrawide scope"
+                       class="w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm placeholder-gray-600 focus:border-accent-500 focus:outline-none" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs text-gray-400">Limit (optional)</label>
+                <input type="number" min="1" x-model.number="editingRule.limit_n"
+                       @input="touchRule()" placeholder="all"
+                       class="w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm placeholder-gray-600 focus:border-accent-500 focus:outline-none" />
+              </div>
+            </div>
+
+            <div class="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label class="mb-1 block text-xs text-gray-400">Order by</label>
+                <select x-model="editingRule.order_by_key" @change="touchRule()"
+                        class="w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm focus:border-accent-500 focus:outline-none">
+                  <option :value="null">Title</option>
+                  <option value="year">Year</option>
+                  <option value="added_at">Date added</option>
+                  <option value="size">File size</option>
+                  <option value="random">Random</option>
+                  <template x-for="f in registry.filter(x => x.aggregatable)" :key="f.key">
+                    <option :value="f.key" x-text="f.label"></option>
+                  </template>
+                </select>
+              </div>
+              <div>
+                <label class="mb-1 block text-xs text-gray-400">Direction</label>
+                <select x-model="editingRule.order_dir" @change="touchRule()"
+                        class="w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm focus:border-accent-500 focus:outline-none">
+                  <option value="desc">Descending</option>
+                  <option value="asc">Ascending</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- The tree -->
+          <div class="rounded-xl border border-gray-800 bg-gray-900 p-4">
+            <div class="mb-1 flex items-center justify-between">
+              <h3 class="font-display text-sm font-semibold text-gray-300">Conditions</h3>
+              <button @click="explainRule()"
+                      class="text-[11px] text-gray-500 hover:text-gray-300"
+                      title="Show the generated SQL and its query plan">
+                Explain SQL
+              </button>
+            </div>
+            <p class="mb-3 text-[11px] text-gray-600">
+              Click the <span class="rounded bg-gray-800 px-1 font-bold text-gray-400">AND</span>
+              between conditions to switch the whole group to
+              <span class="rounded bg-accent-500/20 px-1 font-bold text-accent-300">OR</span>.
+              For mixed logic — <em>scope AND (Dolby&nbsp;Vision OR HDR10)</em> — add a
+              nested group and give it the opposite operator.
+            </p>
+            {{> rule-node }}
+          </div>
+
+          <!-- Preview -->
+          <div class="rounded-xl border border-gray-800 bg-gray-900 p-4">
+            <div class="flex flex-wrap items-baseline gap-3">
+              <h3 class="font-display text-sm font-semibold text-gray-300">Preview</h3>
+              <template x-if="preview">
+                <p class="text-sm">
+                  <span class="tabular font-display text-2xl font-bold text-accent-400"
+                        x-text="preview.matched"></span>
+                  <span class="text-gray-500"
+                        x-text="`of ${preview.in_scope} items match`"></span>
+                  <span x-show="editingRule.limit_n && preview.collection_size < preview.matched"
+                        class="text-gray-500"
+                        x-text="`· collection capped at ${preview.collection_size}`"></span>
+                </p>
+              </template>
+              <span x-show="previewLoading" class="text-xs text-gray-600">updating…</span>
+              <button @click="saveRule()"
+                      class="ml-auto rounded-lg bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-500">
+                <span x-text="editingRule.id ? 'Save changes' : 'Create rule'"></span>
+              </button>
+              <button @click="closeEditor()"
+                      class="rounded-lg border border-gray-600 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-800">
+                Close
+              </button>
+            </div>
+
+            <p x-show="previewError" x-cloak
+               class="mt-3 rounded-lg bg-danger-900/30 px-3 py-2 text-xs text-danger-400"
+               x-text="previewError" style="display: none;"></p>
+
+            <!-- Coverage warning: a rule can look wrong when it's really just
+                 filtering on facts that haven't been computed yet. -->
+            <p x-show="preview?.stale" x-cloak
+               class="mt-3 rounded-lg bg-warn-900/25 px-3 py-2 text-xs text-warn-400"
+               style="display: none;">
+              <span class="tabular" x-text="preview?.stale"></span>
+              items are missing facts this rule depends on
+              (<span x-text="preview?.depends_on?.join(', ')"></span>).
+              <button @click="setTab('scan')" class="underline hover:no-underline">Run a scan</button>
+              to fill them in.
+            </p>
+
+            <template x-if="preview?.sample?.length">
+              <div class="mt-3 overflow-hidden rounded-lg border border-gray-800">
+                <table class="w-full text-xs">
+                  <tbody class="divide-y divide-gray-800">
+                    <template x-for="s in preview.sample" :key="s.id">
+                      <tr class="bg-gray-950/60">
+                        <td class="px-3 py-1.5 text-gray-300" x-text="s.title"></td>
+                        <td class="tabular px-3 py-1.5 text-right text-gray-600" x-text="s.year ?? ''"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </template>
+          </div>
+
+          <!-- Explain output -->
+          <template x-if="explain">
+            <div class="rounded-xl border border-gray-800 bg-gray-950 p-4">
+              <div class="mb-2 flex items-center justify-between">
+                <h3 class="font-display text-sm font-semibold text-gray-300">Generated SQL</h3>
+                <button @click="explain = null" class="text-gray-600 hover:text-gray-300">✕</button>
+              </div>
+              <pre class="app-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] text-gray-400"
+                   x-text="explain.sql"></pre>
+              <p class="mt-2 font-mono text-[11px] text-gray-600"
+                 x-text="`params: ${JSON.stringify(explain.params)}`"></p>
+              <div class="mt-2 border-t border-gray-800 pt-2">
+                <template x-for="(p, i) in explain.plan" :key="i">
+                  <p class="font-mono text-[11px]"
+                     :class="String(p.detail).includes('SCAN') && !String(p.detail).includes('USING')
+                             ? 'text-warn-400' : 'text-gray-500'"
+                     x-text="p.detail"></p>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+  </div>
+</section>

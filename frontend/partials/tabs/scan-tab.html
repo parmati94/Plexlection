@@ -1,0 +1,144 @@
+<section x-show="activeTab === 'scan'" x-cloak
+         class="mx-auto max-w-[92rem] px-4 py-6" style="display: none;">
+
+  <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 class="font-display text-xl font-bold">Scan</h2>
+      <p class="text-sm text-gray-500">
+        Providers run cheapest-first, in dependency order. Work is incremental and
+        resumable — cancelling keeps everything already computed.
+      </p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button @click="startScan({ discover: true })" :disabled="scanActive || !plexConfigured"
+              class="rounded-lg bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-500 disabled:opacity-50">
+        <span x-text="scanActive ? 'Scanning…' : 'Scan library'"></span>
+      </button>
+      <button @click="startScan({ providers: [], discover: true })"
+              :disabled="scanActive || !plexConfigured"
+              class="rounded-lg border border-gray-600 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-800 disabled:opacity-50">
+        Discovery only
+      </button>
+    </div>
+  </div>
+
+  <!-- Live progress -->
+  <div x-show="scanActive" style="display: none;"
+       class="mb-5 rounded-xl border border-accent-600/40 bg-accent-900/10 p-4">
+    <div class="flex items-center justify-between gap-4">
+      <div class="min-w-0">
+        <p class="font-display text-sm font-semibold text-accent-300">
+          <span x-text="scanState?.provider_label ?? scanState?.provider ?? 'scan'"></span>
+        </p>
+        <p class="truncate text-xs text-gray-500" x-text="scanState?.current || 'working…'"></p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="tabular text-sm text-gray-300"
+              x-text="`${scanState?.done ?? 0} / ${scanState?.total ?? 0}`"></span>
+        <button @click="cancelScan()"
+                class="rounded-lg border border-danger-600/60 px-3 py-1.5 text-sm text-danger-400 hover:bg-danger-900/40">
+          Cancel
+        </button>
+      </div>
+    </div>
+    <div class="mt-3 h-2 overflow-hidden rounded-full bg-gray-800">
+      <div class="h-full rounded-full bg-accent-500 transition-all"
+           :style="`width:${Math.round(scanPct * 100)}%`"></div>
+    </div>
+  </div>
+
+  <!-- Provider cards, generated from the registry -->
+  <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <template x-for="p in providerCards" :key="p.id">
+      <div class="rounded-xl border border-gray-800 bg-gray-900 p-4">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <h3 class="font-display text-sm font-semibold text-gray-200" x-text="p.label"></h3>
+            <p class="text-[11px] text-gray-600">
+              <span x-text="`${p.fact_count} facts`"></span>
+              <template x-if="p.depends_on.length">
+                <span> · needs <span x-text="p.depends_on.join(', ')"></span></span>
+              </template>
+            </p>
+          </div>
+          <span class="rounded-full px-2 py-0.5 text-[10px]"
+                :title="costMeta(p.cost).hint"
+                :class="{
+                  'bg-gray-800 text-gray-400': p.cost === 'free',
+                  'bg-ok-900/40 text-ok-400': p.cost === 'cheap',
+                  'bg-warn-900/40 text-warn-400': p.cost === 'network',
+                  'bg-danger-900/40 text-danger-400': p.cost === 'expensive'
+                }"
+                x-text="costMeta(p.cost).label"></span>
+        </div>
+
+        <template x-if="!p.configured">
+          <p class="mt-3 rounded bg-gray-950 px-2 py-1.5 text-[11px] text-gray-500"
+             x-text="p.reason ?? 'not configured'"></p>
+        </template>
+
+        <template x-if="p.configured">
+          <div class="mt-3">
+            <div class="flex items-baseline justify-between text-xs">
+              <span class="text-gray-500">Coverage</span>
+              <span class="tabular text-gray-300"
+                    x-text="`${coverageFor(p.id).known} / ${coverageFor(p.id).total}`"></span>
+            </div>
+            <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-800">
+              <div class="h-full rounded-full bg-accent-500"
+                   :style="`width:${coveragePct(p.id)}%`"></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2 text-[11px]">
+              <span x-show="coverageFor(p.id).stale" class="text-warn-400"
+                    x-text="`${coverageFor(p.id).stale} stale`"></span>
+              <span x-show="coverageFor(p.id).errors" class="text-danger-400"
+                    x-text="`${coverageFor(p.id).errors} errors`"></span>
+              <span x-show="coverageFor(p.id).skipped" class="text-gray-500"
+                    x-text="`${coverageFor(p.id).skipped} skipped`"></span>
+              <button @click="rescanProvider(p.id)" :disabled="scanActive"
+                      class="ml-auto rounded border border-gray-700 px-2 py-0.5 text-gray-400 hover:bg-gray-800 disabled:opacity-40">
+                Recompute
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </template>
+  </div>
+
+  <!-- Recent runs -->
+  <div x-show="scanRuns.length" style="display: none;" class="mt-6">
+    <h3 class="mb-2 font-display text-sm font-semibold text-gray-400">Recent runs</h3>
+    <div class="overflow-hidden rounded-xl border border-gray-800">
+      <table class="w-full text-xs">
+        <thead class="bg-gray-900 text-left uppercase tracking-wide text-gray-500">
+          <tr>
+            <th class="px-3 py-2">When</th>
+            <th class="px-3 py-2">Kind</th>
+            <th class="px-3 py-2">Status</th>
+            <th class="px-3 py-2">Took</th>
+            <th class="px-3 py-2">Result</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-800">
+          <template x-for="r in scanRuns" :key="r.id">
+            <tr class="bg-gray-900/50">
+              <td class="px-3 py-1.5 text-gray-400" x-text="formatDate(r.started_at)"></td>
+              <td class="px-3 py-1.5 text-gray-400" x-text="r.kind"></td>
+              <td class="px-3 py-1.5">
+                <span :class="{
+                        'text-ok-400': r.status === 'done',
+                        'text-warn-400': r.status === 'cancelled',
+                        'text-danger-400': r.status === 'error',
+                        'text-accent-400': r.status === 'running'
+                      }" x-text="r.status"></span>
+              </td>
+              <td class="tabular px-3 py-1.5 text-gray-500" x-text="runDuration(r)"></td>
+              <td class="truncate px-3 py-1.5 text-gray-500" x-text="r.message ?? '—'"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,42 @@
+import { defineConfig } from 'vite';
+import handlebars from 'vite-plugin-handlebars';
+import { resolve } from 'path';
+
+export default defineConfig({
+  root: './',
+  publicDir: 'public',
+  plugins: [
+    handlebars({
+      // The plugin does not recurse — nested partial dirs must be listed.
+      partialDirectory: [
+        resolve(__dirname, 'partials'),
+        resolve(__dirname, 'partials/tabs'),
+      ],
+    }),
+  ],
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: './index.html',
+        login: './login.html',
+      },
+    },
+    minify: 'esbuild',
+    sourcemap: false,
+  },
+  server: {
+    port: 5184,
+    proxy: {
+      // Points at the dev container's published port, NOT 8000 — uvicorn binds
+      // 127.0.0.1:8000 *inside* the container and is not reachable from the host.
+      // Override with PLEXLECTION_API=http://localhost:8000 when running uvicorn
+      // directly on the host instead of in Docker.
+      '/api': {
+        target: process.env.PLEXLECTION_API || 'http://localhost:5183',
+        changeOrigin: true,
+      },
+    },
+  },
+});

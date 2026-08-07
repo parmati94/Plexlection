@@ -1,0 +1,130 @@
+<!-- Sync diff. Also the surface for a refused sync: a guard returns 409 with the
+     diff attached, so the user sees exactly what was blocked and can override
+     deliberately rather than being handed a bare error. -->
+<div x-show="diffModal.open" x-cloak
+     @click.self="closeDiff()"
+     @keydown.escape.window="closeDiff()"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+     style="display: none;">
+
+  <div @click.stop
+       class="app-scroll max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-gray-700 bg-gray-900 p-5 shadow-2xl">
+
+    <div class="mb-4 flex items-start justify-between gap-4">
+      <div>
+        <h3 class="font-display text-lg font-bold" x-text="diffModal.diff?.rule_name ?? 'Diff'"></h3>
+        <p class="font-mono text-[11px] text-gray-600" x-text="diffModal.diff?.label"></p>
+      </div>
+      <button @click="closeDiff()" class="text-gray-500 hover:text-gray-200">✕</button>
+    </div>
+
+    <p x-show="diffModal.loading" class="py-8 text-center text-sm text-gray-500">Computing…</p>
+
+    <template x-if="diffModal.diff">
+      <div>
+        <!-- Guard refusal -->
+        <div x-show="diffModal.guarded" style="display: none;"
+             class="mb-4 rounded-lg border border-warn-600/50 bg-warn-900/25 p-3">
+          <p class="text-sm font-medium text-warn-400">Sync refused</p>
+          <p class="mt-1 text-xs text-gray-400" x-text="diffModal.guardMessage"></p>
+          <button @click="syncCollection(diffModal.ruleId, { force: true, dryRun: false })"
+                  class="mt-2 rounded-lg bg-danger-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-danger-500">
+            Sync anyway
+          </button>
+        </div>
+
+        <!-- Counters -->
+        <div class="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          <template x-for="s in [
+              {k:'matched', l:'matched', tone:'text-gray-200'},
+              {k:'add_count', l:'add', tone:'text-ok-400'},
+              {k:'remove_count', l:'remove', tone:'text-danger-400'},
+              {k:'kept', l:'kept', tone:'text-gray-400'},
+              {k:'pinned', l:'pinned', tone:'text-accent-400'},
+              {k:'vetoed', l:'vetoed', tone:'text-warn-400'}]" :key="s.k">
+            <div class="rounded-lg border border-gray-800 bg-gray-950 px-2 py-1.5 text-center">
+              <p class="tabular font-display text-lg font-bold" :class="s.tone"
+                 x-text="diffModal.diff[s.k] ?? 0"></p>
+              <p class="text-[10px] uppercase tracking-wide text-gray-600" x-text="s.l"></p>
+            </div>
+          </template>
+        </div>
+
+        <template x-if="diffModal.diff.warnings?.length">
+          <div class="mt-3 space-y-1">
+            <template x-for="w in diffModal.diff.warnings" :key="w">
+              <p class="rounded-lg bg-warn-900/25 px-3 py-2 text-xs text-warn-400" x-text="w"></p>
+            </template>
+          </div>
+        </template>
+
+        <!-- Changes -->
+        <div class="mt-4 grid gap-3 sm:grid-cols-2">
+          <div>
+            <p class="mb-1 text-xs font-medium text-ok-400">
+              Adding <span class="tabular" x-text="diffModal.diff.add_count"></span>
+            </p>
+            <div class="app-scroll max-h-52 overflow-y-auto rounded-lg border border-gray-800 bg-gray-950">
+              <template x-if="!diffModal.diff.add?.length">
+                <p class="px-3 py-3 text-xs text-gray-600">Nothing to add.</p>
+              </template>
+              <template x-for="i in diffModal.diff.add" :key="i.rating_key">
+                <p class="border-b border-gray-800/60 px-3 py-1 text-xs text-gray-300">
+                  <span x-text="i.title ?? i.rating_key"></span>
+                  <span class="text-gray-600" x-text="i.year ?? ''"></span>
+                </p>
+              </template>
+            </div>
+          </div>
+          <div>
+            <p class="mb-1 text-xs font-medium text-danger-400">
+              Removing <span class="tabular" x-text="diffModal.diff.remove_count"></span>
+            </p>
+            <div class="app-scroll max-h-52 overflow-y-auto rounded-lg border border-gray-800 bg-gray-950">
+              <template x-if="!diffModal.diff.remove?.length">
+                <p class="px-3 py-3 text-xs text-gray-600">Nothing to remove.</p>
+              </template>
+              <template x-for="i in diffModal.diff.remove" :key="i.rating_key">
+                <p class="border-b border-gray-800/60 px-3 py-1 text-xs text-gray-300">
+                  <span x-text="i.title ?? i.rating_key"></span>
+                  <span class="text-gray-600" x-text="i.year ?? ''"></span>
+                </p>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <p x-show="diffModal.diff.drifted" style="display: none;"
+           class="mt-3 text-xs text-gray-500">
+          <span class="tabular" x-text="diffModal.diff.drifted"></span>
+          items carry this label but weren't applied by Plexlection — they're left alone.
+        </p>
+
+        <!-- Applying from here bypasses the global dry-run switch. That has to
+             be said out loud: the Collections tab shows a "dry run on" badge,
+             so a button that writes anyway is genuinely surprising. -->
+        <p x-show="dryRunDefault && !diffModal.diff.applied && !diffModal.guarded"
+           style="display: none;"
+           class="mt-4 rounded-lg border border-warn-600/40 bg-warn-900/20 px-3 py-2 text-xs text-warn-400">
+           Dry run is on globally, but applying here overrides it for this one sync —
+           <span class="font-medium"
+                 x-text="`${diffModal.diff.add_count} labels added, ${diffModal.diff.remove_count} removed`"></span>,
+           written to Plex immediately. Undo with <em>unsync</em> on the collection card.
+        </p>
+
+        <div class="mt-5 flex items-center justify-end gap-2">
+          <button @click="closeDiff()"
+                  class="rounded-lg border border-gray-600 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-800">
+            Close
+          </button>
+          <button x-show="!diffModal.diff.applied && !diffModal.guarded"
+                  @click="applyFromDiff()"
+                  class="rounded-lg px-3 py-1.5 text-sm font-medium text-white"
+                  :class="dryRunDefault ? 'bg-warn-600 hover:bg-warn-500' : 'bg-accent-600 hover:bg-accent-500'"
+                  x-text="dryRunDefault ? 'Write to Plex anyway' : 'Apply to Plex'"></button>
+          <span x-show="diffModal.diff.applied" class="text-sm text-ok-400">Applied ✓</span>
+        </div>
+      </div>
+    </template>
+  </div>
+</div>

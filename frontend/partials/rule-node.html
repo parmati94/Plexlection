@@ -1,0 +1,180 @@
+<!-- Flattened rule tree.
+
+     Alpine can't render a component recursively, so the tree is flattened in
+     ruleBuilder.js into a depth-first array and drawn by a single x-for, with
+     indentation from `depth`. A side benefit: drag-to-reorder becomes feasible
+     later, which a recursive template would make painful. -->
+
+<div class="space-y-1">
+  <template x-for="n in ruleFlatNodes" :key="n.id">
+    <div class="flex flex-wrap items-center gap-1.5 rounded-md py-1"
+         :style="`margin-left:${n.depth * 1.25}rem`">
+
+      <!-- Joiner. Sits between siblings and IS the AND/OR control — putting it
+           only on the group header made every rule read as an AND, because
+           nothing between the conditions said otherwise. -->
+      <template x-if="n.index > 0 && n.parentType">
+        <button @click="toggleGroupOp(n.parentId)"
+                class="-ml-1 w-11 shrink-0 rounded px-1 py-0.5 text-[10px] font-bold tracking-wide transition-colors"
+                :class="n.parentType === 'or'
+                  ? 'bg-accent-500/20 text-accent-300 hover:bg-accent-500/30'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'"
+                :title="n.parentType === 'and'
+                  ? 'Every condition must match — click for ANY'
+                  : 'Any one condition may match — click for ALL'"
+                x-text="n.parentType === 'and' ? 'AND' : 'OR'"></button>
+      </template>
+      <span x-show="n.index === 0 && n.parentType" class="w-11 shrink-0"></span>
+
+      <!-- Group node -->
+      <template x-if="n.type === 'and' || n.type === 'or'">
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-xs text-gray-400">Match</span>
+          <div class="inline-flex overflow-hidden rounded-md border border-gray-700">
+            <button @click="setGroupOp(n.id, 'and')"
+                    class="px-2 py-0.5 text-xs font-medium transition-colors"
+                    :class="n.type === 'and' ? 'bg-accent-600 text-white' : 'text-gray-400 hover:bg-gray-800'">
+              ALL
+            </button>
+            <button @click="setGroupOp(n.id, 'or')"
+                    class="px-2 py-0.5 text-xs font-medium transition-colors"
+                    :class="n.type === 'or' ? 'bg-accent-600 text-white' : 'text-gray-400 hover:bg-gray-800'">
+              ANY
+            </button>
+          </div>
+          <span class="text-xs text-gray-400">of:</span>
+
+          <button @click="addCondition(n.id)"
+                  class="ml-1 rounded border border-gray-700 px-1.5 py-0.5 text-[11px] text-gray-400 hover:bg-gray-800">
+            + condition
+          </button>
+          <button @click="addGroup(n.id)"
+                  class="rounded border border-gray-700 px-1.5 py-0.5 text-[11px] text-gray-400 hover:bg-gray-800"
+                  title="A nested group can use the opposite operator — e.g. scope AND (Dolby Vision OR HDR10)">
+            + group
+          </button>
+          <button x-show="n.depth > 0" @click="removeNode(n.id)"
+                  class="px-1 text-gray-600 hover:text-danger-400">✕</button>
+        </div>
+      </template>
+
+      <!-- NOT wrapper -->
+      <template x-if="n.type === 'not'">
+        <div class="flex items-center gap-1.5">
+          <span class="rounded bg-danger-900/40 px-1.5 py-0.5 text-[11px] font-medium text-danger-400">NOT</span>
+          <button @click="unwrapNot(n.id)"
+                  class="text-[11px] text-gray-600 hover:text-gray-300"
+                  title="Remove the NOT, keep the condition">unwrap</button>
+        </div>
+      </template>
+
+      <!-- Condition leaf -->
+      <template x-if="n.type === 'cmp'">
+        <div class="flex flex-wrap items-center gap-1.5">
+
+          <!-- Fact, grouped by namespace -->
+          <select x-model="n.node.key" @change="onFactChange(n.id)"
+                  class="max-w-[15rem] rounded-md border border-gray-700 bg-gray-950 px-2 py-1 text-xs focus:border-accent-500 focus:outline-none">
+            <template x-for="g in factOptionGroups()" :key="g.group">
+              <optgroup :label="g.group">
+                <template x-for="f in g.facts" :key="f.key">
+                  <option :value="f.key" x-text="f.label"></option>
+                </template>
+              </optgroup>
+            </template>
+          </select>
+
+          <!-- Operators, straight from the registry — never hardcoded -->
+          <select x-model="n.node.op" @change="onOpChange(n.id)"
+                  class="rounded-md border border-gray-700 bg-gray-950 px-2 py-1 text-xs focus:border-accent-500 focus:outline-none">
+            <template x-for="o in operatorsFor(n.node.key)" :key="o.op">
+              <option :value="o.op" x-text="o.label"></option>
+            </template>
+          </select>
+
+          <!-- Value editor, switched on the operator's declared value_kind -->
+          <template x-if="valueKind(n.node) === 'number'">
+            <input type="number" step="any" x-model.number="n.node.value" @input="touchRule()"
+                   class="w-24 rounded-md border border-gray-700 bg-gray-950 px-2 py-1 text-xs focus:border-accent-500 focus:outline-none" />
+          </template>
+
+          <template x-if="valueKind(n.node) === 'text'">
+            <input type="text" x-model="n.node.value" @input="touchRule()"
+                   class="w-40 rounded-md border border-gray-700 bg-gray-950 px-2 py-1 text-xs focus:border-accent-500 focus:outline-none" />
+          </template>
+
+          <template x-if="valueKind(n.node) === 'date'">
+            <input type="date" x-model="n.node.value" @change="touchRule()"
+                   class="rounded-md border border-gray-700 bg-gray-950 px-2 py-1 text-xs focus:border-accent-500 focus:outline-none" />
+          </template>
+
+          <template x-if="valueKind(n.node) === 'enum' && opArity(n.node) === 1">
+            <select x-model="n.node.value" @change="touchRule()"
+                    class="rounded-md border border-gray-700 bg-gray-950 px-2 py-1 text-xs focus:border-accent-500 focus:outline-none">
+              <option value="">—</option>
+              <template x-for="v in (specFor(n.node.key)?.enum_values ?? [])" :key="v">
+                <option :value="v" x-text="v"></option>
+              </template>
+            </select>
+          </template>
+
+          <!-- Multi-value: enum or free text, rendered as removable chips -->
+          <template x-if="opArity(n.node) === 'n'">
+            <div class="flex flex-wrap items-center gap-1">
+              <template x-for="v in listValue(n.node)" :key="v">
+                <span class="inline-flex items-center gap-1 rounded bg-accent-500/15 px-1.5 py-0.5 text-[11px] text-accent-300">
+                  <span x-text="v"></span>
+                  <button @click="removeListValue(n.id, v)" class="hover:text-white">✕</button>
+                </span>
+              </template>
+              <template x-if="specFor(n.node.key)?.enum_values">
+                <select @change="addListValue(n.id, $event.target.value); $event.target.value = ''"
+                        class="rounded-md border border-gray-700 bg-gray-950 px-2 py-1 text-xs focus:border-accent-500 focus:outline-none">
+                  <option value="">+ add…</option>
+                  <template x-for="v in specFor(n.node.key).enum_values" :key="v">
+                    <option :value="v" x-text="v"></option>
+                  </template>
+                </select>
+              </template>
+              <template x-if="!specFor(n.node.key)?.enum_values">
+                <input type="text" placeholder="+ add…"
+                       @keydown.enter.prevent="addListValue(n.id, $event.target.value); $event.target.value = ''"
+                       class="w-28 rounded-md border border-gray-700 bg-gray-950 px-2 py-1 text-xs placeholder-gray-600 focus:border-accent-500 focus:outline-none" />
+              </template>
+            </div>
+          </template>
+
+          <!-- Range -->
+          <template x-if="opArity(n.node) === 2">
+            <div class="flex items-center gap-1">
+              <input type="number" step="any" :value="listValue(n.node)[0] ?? ''"
+                     @input="n.node.value = [$event.target.value, listValue(n.node)[1] ?? '']; touchRule()"
+                     class="w-20 rounded-md border border-gray-700 bg-gray-950 px-2 py-1 text-xs focus:border-accent-500 focus:outline-none" />
+              <span class="text-xs text-gray-600">and</span>
+              <input type="number" step="any" :value="listValue(n.node)[1] ?? ''"
+                     @input="n.node.value = [listValue(n.node)[0] ?? '', $event.target.value]; touchRule()"
+                     class="w-20 rounded-md border border-gray-700 bg-gray-950 px-2 py-1 text-xs focus:border-accent-500 focus:outline-none" />
+            </div>
+          </template>
+
+          <!-- Suggest: typeahead over values actually present in the library -->
+          <template x-if="valueKind(n.node) === 'suggest' && opArity(n.node) === 1">
+            <input type="text" x-model="n.node.value" @input="touchRule()"
+                   :list="`suggest-${n.id}`" placeholder="value"
+                   @focus="suggestValues(n.node.key, '')"
+                   class="w-40 rounded-md border border-gray-700 bg-gray-950 px-2 py-1 text-xs placeholder-gray-600 focus:border-accent-500 focus:outline-none" />
+          </template>
+
+          <span x-show="coverageNote(n.node.key)" class="text-[10px] text-warn-500"
+                x-text="coverageNote(n.node.key)"
+                title="Items missing this fact can't match — run a scan"></span>
+
+          <button @click="wrapInNot(n.id)"
+                  class="rounded border border-gray-700 px-1.5 py-0.5 text-[10px] text-gray-500 hover:bg-gray-800"
+                  title="Negate this condition">not</button>
+          <button @click="removeNode(n.id)" class="px-1 text-gray-600 hover:text-danger-400">✕</button>
+        </div>
+      </template>
+    </div>
+  </template>
+</div>

@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Accent theme palettes ──────────────────────────────────────────────────
+   Every accent-* Tailwind utility resolves to these vars (see tailwind.config.js).
+   Values are space-separated `R G B` triplets so Tailwind can apply <alpha-value>.
+   :root is the default (violet); setting data-theme on <html> swaps the accent in
+   one shot. This app is dark-only — data-theme changes hue, not light/dark. */
+:root, [data-theme="violet"] {
+  --accent-50: 245 243 255;  --accent-100: 237 233 254; --accent-200: 221 214 254;
+  --accent-300: 196 181 253; --accent-400: 167 139 250; --accent-500: 139 92 246;
+  --accent-600: 124 58 237;  --accent-700: 109 40 217;  --accent-800: 91 33 182;
+  --accent-900: 76 29 149;
+}
+/* Plex's own gold, for people who want the tool to match the server. */
+[data-theme="plex"] {
+  --accent-50: 254 249 231;  --accent-100: 253 242 202; --accent-200: 252 230 149;
+  --accent-300: 250 214 91;  --accent-400: 240 187 32;  --accent-500: 229 160 13;
+  --accent-600: 202 138 4;   --accent-700: 161 108 6;   --accent-800: 133 89 13;
+  --accent-900: 113 75 16;
+}
+[data-theme="emerald"] {
+  --accent-50: 236 253 245;  --accent-100: 209 250 229; --accent-200: 167 243 208;
+  --accent-300: 110 231 183; --accent-400: 52 211 153;  --accent-500: 16 185 129;
+  --accent-600: 5 150 105;   --accent-700: 4 120 87;    --accent-800: 6 95 70;
+  --accent-900: 6 78 59;
+}
+[data-theme="blue"] {
+  --accent-50: 239 246 255;  --accent-100: 219 234 254; --accent-200: 191 219 254;
+  --accent-300: 147 197 253; --accent-400: 96 165 250;  --accent-500: 59 130 246;
+  --accent-600: 37 99 235;   --accent-700: 29 78 216;   --accent-800: 30 64 175;
+  --accent-900: 30 58 138;
+}
+[data-theme="rose"] {
+  --accent-50: 255 241 242;  --accent-100: 255 228 230; --accent-200: 254 205 211;
+  --accent-300: 253 164 175; --accent-400: 251 113 133; --accent-500: 244 63 94;
+  --accent-600: 225 29 72;   --accent-700: 190 18 60;   --accent-800: 159 18 57;
+  --accent-900: 136 19 55;
+}
+
+/* ── Semantic feedback palette ──────────────────────────────────────────────
+   FIXED across every accent theme. "Danger" must never be the accent hue. */
+:root {
+  --ok-400: 74 222 128;   --ok-500: 34 197 94;    --ok-600: 22 163 74;    --ok-900: 20 83 45;
+  --warn-400: 251 191 36; --warn-500: 245 158 11; --warn-600: 217 119 6;  --warn-900: 120 53 15;
+  --danger-400: 248 113 113; --danger-500: 239 68 68; --danger-600: 220 38 38; --danger-900: 127 29 29;
+}
+
+[x-cloak] { display: none !important; }
+
+/* Reduced motion — seeded from prefers-reduced-motion, toggleable in settings. */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Scrollbars, themed to the dark surface. */
+.app-scroll { scrollbar-width: thin; scrollbar-color: #4b5563 transparent; }
+.app-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.app-scroll::-webkit-scrollbar-track { background: transparent; }
+.app-scroll::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+.app-scroll::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Monospace numerics so progress counters don't jitter as digits change. */
+.tabular { font-variant-numeric: tabular-nums; }

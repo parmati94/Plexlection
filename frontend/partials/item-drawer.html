@@ -1,0 +1,114 @@
+<!-- Item detail drawer.
+     This is the debugging surface: when a fact looks wrong, it shows which
+     provider produced it, when, and whether the file has changed since. -->
+<div x-show="itemDrawer.open" x-cloak
+     @click.self="closeItem()"
+     @keydown.escape.window="closeItem()"
+     class="fixed inset-0 z-50 flex justify-end bg-black/60"
+     style="display: none;">
+
+  <div @click.stop
+       x-show="itemDrawer.open"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="translate-x-full"
+       x-transition:enter-end="translate-x-0"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="translate-x-0"
+       x-transition:leave-end="translate-x-full"
+       class="app-scroll h-full w-full max-w-xl overflow-y-auto border-l border-gray-800 bg-gray-900 p-5">
+
+    <div class="mb-4 flex items-start justify-between gap-4">
+      <div class="min-w-0">
+        <h3 class="font-display text-lg font-bold" x-text="itemDrawer.item?.title ?? 'Loading…'"></h3>
+        <p class="text-sm text-gray-500">
+          <span x-text="itemDrawer.item?.year ?? ''"></span>
+          <span x-show="itemDrawer.item?.tmdb_id" class="text-gray-600">
+            · TMDB <span x-text="itemDrawer.item?.tmdb_id"></span>
+          </span>
+        </p>
+      </div>
+      <button @click="closeItem()" class="text-gray-500 hover:text-gray-200">✕</button>
+    </div>
+
+    <template x-if="itemDrawer.item">
+      <div class="space-y-4">
+
+        <!-- File -->
+        <div class="rounded-lg border border-gray-800 bg-gray-950 p-3">
+          <p class="mb-2 text-xs uppercase tracking-wide text-gray-500">File</p>
+          <dl class="space-y-1.5 text-xs">
+            <div>
+              <dt class="text-gray-500">Plex path</dt>
+              <dd class="break-all font-mono text-gray-400" x-text="itemDrawer.item.plex_path ?? '—'"></dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Container path</dt>
+              <dd class="break-all font-mono"
+                  :class="itemDrawer.item.path_status === 'mapped' ? 'text-ok-400' : 'text-danger-400'"
+                  x-text="itemDrawer.item.local_path ?? 'not mapped'"></dd>
+            </div>
+            <div class="flex gap-6">
+              <div>
+                <dt class="text-gray-500">Size</dt>
+                <dd class="tabular text-gray-400" x-text="formatBytes(itemDrawer.item.file_size)"></dd>
+              </div>
+              <div>
+                <dt class="text-gray-500">Added</dt>
+                <dd class="tabular text-gray-400" x-text="formatDate(itemDrawer.item.plex_added_at)"></dd>
+              </div>
+              <div>
+                <dt class="text-gray-500">Status</dt>
+                <dd x-text="itemDrawer.item.path_status"
+                    :class="itemDrawer.item.path_status === 'mapped' ? 'text-ok-400' : 'text-warn-400'"></dd>
+              </div>
+            </div>
+          </dl>
+        </div>
+
+        <!-- Provenance -->
+        <div class="rounded-lg border border-gray-800 bg-gray-950 p-3">
+          <p class="mb-2 text-xs uppercase tracking-wide text-gray-500">Providers</p>
+          <template x-if="!itemDrawer.provenance.length">
+            <p class="text-xs text-gray-600">No provider has run against this item yet.</p>
+          </template>
+          <div class="space-y-1.5">
+            <template x-for="p in itemDrawer.provenance" :key="p.provider">
+              <div class="flex items-center gap-2 text-xs">
+                <span x-text="p.status === 'ok' ? '✅' : p.status === 'error' ? '❌' : '⏭️'"></span>
+                <span class="font-medium text-gray-300" x-text="p.provider"></span>
+                <span class="text-gray-600" x-text="formatDate(p.computed_at)"></span>
+                <span x-show="p.stale" class="rounded bg-warn-900/40 px-1.5 text-warn-400"
+                      title="The file changed since these facts were computed">stale</span>
+                <span x-show="p.reason" class="truncate text-gray-600" x-text="p.reason"></span>
+                <span x-show="p.duration_ms" class="tabular ml-auto text-gray-600"
+                      x-text="`${p.duration_ms}ms`"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Facts -->
+        <div class="rounded-lg border border-gray-800 bg-gray-950 p-3">
+          <p class="mb-2 text-xs uppercase tracking-wide text-gray-500">
+            Facts <span class="tabular text-gray-600" x-text="drawerFacts.length"></span>
+          </p>
+          <template x-if="!drawerFacts.length">
+            <p class="text-xs text-gray-600">
+              No facts yet — run a scan with the ffprobe provider enabled.
+            </p>
+          </template>
+          <table class="w-full text-xs">
+            <tbody class="divide-y divide-gray-800/60">
+              <template x-for="f in drawerFacts" :key="f.key">
+                <tr>
+                  <td class="py-1 pr-3 font-mono text-gray-500" x-text="f.key"></td>
+                  <td class="py-1 text-right font-mono text-gray-300" x-text="formatFactValue(f.value)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
+  </div>
+</div>

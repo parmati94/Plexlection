@@ -1,0 +1,40 @@
+# Instance data — the SQLite database holds the Plex token and every API key in
+# plaintext. MediaCleanup committed its data/config.yaml with live keys; do not
+# repeat that. Ignored wholesale, with no exceptions: a negation inside an
+# ignored directory doesn't work anyway, and the app creates this on startup.
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Node / Vite
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Working notes — local only, not part of the published repo
+TODO.md
+DESIGN.md
+
+# Machine-specific compose override — real media paths live here, never in the
+# committed files. Run with:  docker compose -f docker-compose.local.yml up -d
+docker-compose.local.yml
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Logs
+*.log
+logs/
