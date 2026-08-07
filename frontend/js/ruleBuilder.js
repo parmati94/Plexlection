@@ -248,6 +248,80 @@ export function ruleBuilderMixin() {
       this.touchRule();
     },
 
+    // ── units ───────────────────────────────────────────────────────────
+    /**
+     * How a fact's value is entered versus how it's stored.
+     *
+     * Storage stays canonical — seconds, bytes, kbps, dollars — because that's
+     * what the providers emit and what the SQL compares. Only the input scales,
+     * so nobody has to type 7200 to mean two hours or 42000000000 to mean 42 GB.
+     *
+     * `stored = entered * scale`.
+     */
+    unitFor(key) {
+      const spec = this.specFor(key);
+      if (!spec) return null;
+      const by = {
+        duration_s: { suffix: 'min', scale: 60, step: 1, stored: 'seconds' },
+        bytes: { suffix: 'GB', scale: 1e9, step: 0.1, stored: 'bytes' },
+        kbps: { suffix: 'Mbps', scale: 1000, step: 0.1, stored: 'kbps' },
+        percent: { suffix: '%', scale: 0.01, step: 1, stored: 'a 0–1 fraction' },
+        ratio: { suffix: ':1', scale: 1, step: 0.01, stored: null },
+      };
+      if (spec.format && by[spec.format]) return by[spec.format];
+      if (spec.unit === 'USD') return { suffix: '$M', scale: 1e6, step: 0.1, stored: 'dollars' };
+      if (spec.unit) return { suffix: spec.unit, scale: 1, step: spec.unit === 'fps' ? 0.001 : 1, stored: null };
+      return null;
+    },
+
+    /** Canonical stored value → what the user sees in the box. */
+    toDisplay(key, stored) {
+      if (stored === '' || stored === null || stored === undefined) return '';
+      const u = this.unitFor(key);
+      const n = Number(stored);
+      if (!Number.isFinite(n)) return stored;
+      if (!u || u.scale === 1) return n;
+      return Math.round((n / u.scale) * 10000) / 10000;
+    },
+
+    /** What the user typed → the canonical value we store and compare. */
+    fromDisplay(key, entered) {
+      if (entered === '' || entered === null || entered === undefined) return null;
+      const u = this.unitFor(key);
+      const n = Number(entered);
+      if (!Number.isFinite(n)) return entered;
+      if (!u || u.scale === 1) return n;
+      // Round to kill float dust: 42 GB must store as 42000000000, not …0000001.
+      return Math.round(n * u.scale * 1000) / 1000;
+    },
+
+    /** Bound to the single-value number input. */
+    numberIn(node) {
+      return this.toDisplay(node.key, node.value);
+    },
+    setNumberIn(node, entered) {
+      node.value = this.fromDisplay(node.key, entered);
+      this.touchRule();
+    },
+
+    /** Bound to each half of a `between` range. */
+    rangeIn(node, i) {
+      return this.toDisplay(node.key, this.listValue(node)[i]);
+    },
+    setRangeIn(node, i, entered) {
+      const pair = [this.listValue(node)[0] ?? '', this.listValue(node)[1] ?? ''];
+      pair[i] = this.fromDisplay(node.key, entered);
+      node.value = pair;
+      this.touchRule();
+    },
+
+    /** Tooltip telling power users what actually goes into the rule. */
+    unitHint(key) {
+      const u = this.unitFor(key);
+      if (!u) return '';
+      return u.stored ? `Entered in ${u.suffix}, stored as ${u.stored}` : `Measured in ${u.suffix}`;
+    },
+
     // ── registry lookups ────────────────────────────────────────────────
     specFor(key) {
       return this.registry.find((f) => f.key === key) ?? null;
@@ -279,11 +353,19 @@ export function ruleBuilderMixin() {
       return `known for ${known} of ${total}`;
     },
 
-    /** Registry grouped for the fact <select>. */
+    /**
+     * Registry grouped for the fact <select>, with the unit in the label.
+     *
+     * Three facts are called some variant of "runtime" and two of them are in
+     * minutes while the third is in seconds — the label has to disambiguate
+     * before you pick, not after.
+     */
     factOptionGroups() {
       const groups = {};
       for (const f of this.registry) {
-        (groups[f.group] ??= []).push(f);
+        const u = this.unitFor(f.key);
+        const label = u && u.suffix !== ':1' ? `${f.label} (${u.suffix})` : f.label;
+        (groups[f.group] ??= []).push({ ...f, optionLabel: label });
       }
       return Object.entries(groups).map(([group, facts]) => ({ group, facts }));
     },
