@@ -54,6 +54,18 @@
       </div>
     </div>
 
+    <div x-show="syncActive" style="display: none;">
+      <div class="flex items-baseline justify-between text-micro text-ink-muted">
+        <span x-text="syncState?.phase ?? 'syncing'"></span>
+        <span class="tabular" x-text="`${Math.round(syncPct * 100)}%`"></span>
+      </div>
+      <div class="mt-1 h-1 overflow-hidden rounded-full bg-raised">
+        <div class="h-full rounded-full bg-accent-500 transition-all"
+             :style="`width:${Math.round(syncPct * 100)}%`"></div>
+      </div>
+      <p class="truncate text-micro text-ink-faint" x-text="syncState?.rule_name ?? ''"></p>
+    </div>
+
     <div class="flex items-center gap-2 text-micro text-ink-faint">
       <span class="h-1.5 w-1.5 rounded-full"
             :class="sseConnected ? 'bg-ok-500' : 'bg-line-strong'"></span>

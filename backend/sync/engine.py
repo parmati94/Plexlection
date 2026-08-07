@@ -77,6 +77,30 @@ class SyncEngine:
         self.settings_store = settings_store
         self.broadcaster = broadcaster
 
+    # ── progress ──────────────────────────────────────────────────────────
+    def _progress(self, rule: dict, phase: str, done: int, total: int) -> None:
+        """Publish sync progress on the same stream the scan uses.
+
+        Label writes go out in batches of 50, so a thousand-item collection is
+        twenty sequential Plex round-trips with nothing to show for it. The
+        broadcaster is already connected and already coalescing at 250ms — this
+        just stops the sync being the one long operation that reports nothing.
+        """
+        if not self.broadcaster:
+            return
+        self.broadcaster.set_state("sync", {
+            "rule_id": rule.get("id"),
+            "rule_name": rule.get("name"),
+            "phase": phase,
+            "done": done,
+            "total": total,
+            "status": "running",
+        })
+
+    def _progress_done(self) -> None:
+        if self.broadcaster:
+            self.broadcaster.set_state("sync", None)
+
     # ── labels ────────────────────────────────────────────────────────────
     def labels_for(self, slug: str) -> tuple[str, str, str]:
         prefix = self.settings_store.get().plex.label_prefix or "plexlection"
@@ -157,16 +181,25 @@ class SyncEngine:
         # since unsync only removes what we recorded, those would be orphaned
         # and only removable by hand, across potentially thousands of items.
         errors: list[str] = []
+        total = len(diff.add) + len(diff.remove)
+        moved = 0
+        self._progress(rule, "starting", 0, total)
+
         for start in range(0, len(diff.add), BATCH):
             chunk = [d["rating_key"] for d in diff.add[start:start + BATCH]]
             _, errs = await plex.apply_labels(section_key, chunk, label, add=True)
             errors += errs
             await self._add_membership(rule["id"], chunk)
+            moved += len(chunk)
+            self._progress(rule, "labelling", moved, total)
+
         for start in range(0, len(diff.remove), BATCH):
             chunk = [d["rating_key"] for d in diff.remove[start:start + BATCH]]
             _, errs = await plex.apply_labels(section_key, chunk, label, add=False)
             errors += errs
             await self._drop_membership(rule["id"], chunk)
+            moved += len(chunk)
+            self._progress(rule, "removing labels", moved, total)
 
         if errors:
             diff.warnings.append(f"{len(errors)} label writes failed: {errors[0]}")
@@ -175,11 +208,13 @@ class SyncEngine:
         await self._replace_membership(rule["id"], target)
 
         if rule.get("sync_mode", "label") == "label":
+            self._progress(rule, "updating collection", total, total)
             diff.collection = await self._ensure_collection(
                 plex, section_key, rule, label, pin_label, target, pinned, diff
             )
 
         diff.applied = True
+        self._progress_done()
         await self.db.execute(
             "UPDATE rules SET last_sync_at = ?, last_match_count = ? WHERE id = ?",
             (int(time.time()), diff.matched, rule["id"]),
@@ -356,16 +391,18 @@ class SyncEngine:
         if strip_all:
             ours = sorted(await plex.rating_keys_with_label(section_key, label))
         else:
-            ours = sorted(await self._membership(rule["id"]))
-        removed = 0
+            removed = 0
+        self._progress(rule, "removing labels", 0, len(ours))
         for start in range(0, len(ours), BATCH):
             changed, _ = await plex.apply_labels(
                 section_key, ours[start:start + BATCH], label, add=False
             )
             removed += changed
+            self._progress(rule, "removing labels", removed, len(ours))
 
         deleted = False
         title = rule.get("collection_title") or rule["name"]
+        self._progress(rule, "deleting collection", len(ours), len(ours))
         try:
             deleted = await plex.delete_collection(section_key, title)
         except Exception as exc:
@@ -373,6 +410,7 @@ class SyncEngine:
 
         await self.db.execute("DELETE FROM sync_membership WHERE rule_id = ?", (rule["id"],))
 
+        self._progress_done()
         leftover = len(await plex.rating_keys_with_label(section_key, label))
         return {
             "removed": removed,

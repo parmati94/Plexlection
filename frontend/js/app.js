@@ -143,6 +143,13 @@ document.addEventListener('alpine:init', () => {
     get scanActive() {
       return !!this.scanState && this.scanState.status === 'running';
     },
+    get syncActive() {
+      return !!this.syncState && this.syncState.status === 'running';
+    },
+    get syncPct() {
+      const s = this.syncState;
+      return s && s.total ? Math.min(1, s.done / s.total) : 0;
+    },
     get scanPct() {
       const s = this.scanState;
       return s && s.total ? Math.min(1, s.done / s.total) : 0;

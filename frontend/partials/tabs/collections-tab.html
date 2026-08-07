@@ -59,6 +59,20 @@
           <dd class="text-right text-ink-muted" x-text="formatDate(c.last_sync_at)"></dd>
         </dl>
 
+        <!-- Progress for this card. A thousand-item unsync is twenty sequential
+             Plex round-trips; without this the app looks hung. -->
+        <div x-show="syncState?.rule_id === c.id" style="display: none;" class="mt-3">
+          <div class="flex items-baseline justify-between text-micro text-accent-300">
+            <span x-text="syncState?.phase"></span>
+            <span class="tabular"
+                  x-text="`${syncState?.done ?? 0} / ${syncState?.total ?? 0}`"></span>
+          </div>
+          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-raised">
+            <div class="h-full rounded-full bg-accent-500 transition-all"
+                 :style="`width:${Math.round(syncPct * 100)}%`"></div>
+          </div>
+        </div>
+
         <div class="mt-3 flex flex-wrap items-center gap-1.5">
           <button @click="showDiff(c.id)"
                   class="rounded-lg border border-line-strong px-2.5 py-1 text-body-s text-ink hover:bg-raised">
