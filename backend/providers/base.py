@@ -97,6 +97,11 @@ class FactProvider(ABC):
     # None = immutable until the fingerprint changes. Set for time-varying data.
     max_age_s: ClassVar[int | None] = None
     default_concurrency: ClassVar[int] = 4
+    # True when fingerprint() returns the item's file_fp, which is the only case
+    # where coverage can detect staleness with a plain SQL comparison. Providers
+    # that hash API ids or other facts would otherwise report 100% stale forever,
+    # because their fingerprint never equals file_fp by construction.
+    file_fingerprinted: ClassVar[bool] = False
 
     def __init__(self, settings) -> None:
         self.settings = settings

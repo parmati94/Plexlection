@@ -89,21 +89,21 @@
     </div>
 
     <div class="overflow-hidden rounded-xl border border-line">
-      <table class="w-full text-body">
+      <table class="w-full table-fixed text-body">
         <thead class="bg-surface text-left text-body-s uppercase tracking-wide text-ink-muted">
           <tr>
-            <th class="w-12 px-4 py-3" title="Frame shape, drawn at the film's true aspect ratio">Frame</th>
+            <th class="w-16 px-4 py-3" title="Frame shape, drawn at the film's true aspect ratio"><span class="sr-only">Frame</span></th>
             <th class="cursor-pointer px-4 py-3 hover:text-ink" @click="setLibrarySort('title')">
               Title <span x-show="librarySort === 'title'" x-text="librarySortDir === 'asc' ? '▲' : '▼'"></span>
             </th>
-            <th class="cursor-pointer px-4 py-3 hover:text-ink" @click="setLibrarySort('year')">
+            <th class="w-24 cursor-pointer px-4 py-3 hover:text-ink" @click="setLibrarySort('year')">
               Year <span x-show="librarySort === 'year'" x-text="librarySortDir === 'asc' ? '▲' : '▼'"></span>
             </th>
-            <th class="cursor-pointer px-4 py-3 hover:text-ink" @click="setLibrarySort('size')">
+            <th class="w-28 cursor-pointer px-4 py-3 hover:text-ink" @click="setLibrarySort('size')">
               Size <span x-show="librarySort === 'size'" x-text="librarySortDir === 'asc' ? '▲' : '▼'"></span>
             </th>
-            <th class="px-4 py-3">Path</th>
-            <th class="px-4 py-3">Facts</th>
+            <th class="w-32 px-4 py-3">Path</th>
+            <th class="w-20 px-4 py-3">Facts</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-line">
@@ -118,9 +118,11 @@
                        ? `${item.facts.video.dar}:1 — ${item.facts.video.aspect_bucket ?? ''}`
                        : 'not scanned yet'"></div>
               </td>
-              <td class="px-4 py-3">
-                <p class="font-medium text-ink" x-text="item.title"></p>
-                <p class="truncate font-mono text-micro text-ink-faint" x-text="item.local_path ?? item.plex_path"></p>
+              <td class="max-w-0 px-4 py-3">
+                <p class="truncate font-medium text-ink" x-text="item.title"></p>
+                <p class="truncate font-mono text-micro text-ink-faint"
+                   :title="item.local_path ?? item.plex_path"
+                   x-text="item.local_path ?? item.plex_path"></p>
               </td>
               <td class="tabular px-4 py-3 text-ink-muted" x-text="item.year ?? '—'"></td>
               <td class="tabular px-4 py-3 text-ink-muted" x-text="formatBytes(item.file_size)"></td>

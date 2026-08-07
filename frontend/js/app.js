@@ -107,6 +107,7 @@ document.addEventListener('alpine:init', () => {
     preview: null,
     previewLoading: false,
     previewError: null,
+    previewHint: null,
     explain: null,
     suggestions: [],
 
@@ -141,6 +142,13 @@ document.addEventListener('alpine:init', () => {
     },
     get scanActive() {
       return !!this.scanState && this.scanState.status === 'running';
+    },
+    get syncActive() {
+      return !!this.syncState && this.syncState.status === 'running';
+    },
+    get syncPct() {
+      const s = this.syncState;
+      return s && s.total ? Math.min(1, s.done / s.total) : 0;
     },
     get scanPct() {
       const s = this.scanState;
@@ -236,6 +244,22 @@ document.addEventListener('alpine:init', () => {
     setTab(id) {
       this.activeTab = id;
       localStorage.setItem(LS.tab, id);
+      this.refreshTab(id);
+    },
+
+    /**
+     * Pull the data a tab depends on when it's opened.
+     *
+     * Everything used to load once at init, so a rule created on the Rules tab
+     * didn't appear under Collections until a full page reload — and scan
+     * coverage went stale the same way.
+     */
+    refreshTab(id) {
+      if (id === 'collections') this.loadCollections();
+      else if (id === 'rules') this.loadRules();
+      else if (id === 'scan') { this.loadScanState(); this.loadRuns(); this.loadRegistry(); }
+      else if (id === 'library') this.loadItemStats();
+      else if (id === 'settings') { this.loadPathHealth(); this.loadSchedule(); }
     },
 
     applyTheme(id) {

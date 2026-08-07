@@ -73,29 +73,50 @@
         <div class="flex flex-wrap items-center gap-1.5">
 
           <!-- Fact, grouped by namespace -->
-          <select x-model="n.node.key" @change="onFactChange(n.id)"
+          <!-- No x-model on these selects, deliberately.
+               x-model (and any :value binding) sets el.value while the nested
+               x-for inside the select still hasn't rendered a single <option>.
+               The browser can't match a value that doesn't exist yet, so it
+               falls back to index 0 and every saved rule opened showing the
+               first fact in the registry. Re-asserting the value from x-effect
+               doesn't help: that fires at the same too-early moment.
+               Binding :selected per option removes the ordering dependency —
+               each option decides its own state as it renders. -->
+          <select @change="n.node.key = $event.target.value; onFactChange(n.id)"
                   class="max-w-[15rem] rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s focus:border-accent-500 focus:outline-none">
             <template x-for="g in factOptionGroups()" :key="g.group">
               <optgroup :label="g.group">
                 <template x-for="f in g.facts" :key="f.key">
-                  <option :value="f.key" x-text="f.label"></option>
+                  <option :value="f.key" :selected="f.key === n.node.key"
+                          x-text="f.optionLabel"></option>
                 </template>
               </optgroup>
             </template>
           </select>
 
           <!-- Operators, straight from the registry — never hardcoded -->
-          <select x-model="n.node.op" @change="onOpChange(n.id)"
+          <select @change="n.node.op = $event.target.value; onOpChange(n.id)"
                   class="rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s focus:border-accent-500 focus:outline-none">
             <template x-for="o in operatorsFor(n.node.key)" :key="o.op">
-              <option :value="o.op" x-text="o.label"></option>
+              <option :value="o.op" :selected="o.op === n.node.op" x-text="o.label"></option>
             </template>
           </select>
 
           <!-- Value editor, switched on the operator's declared value_kind -->
+          <!-- Number input carries its unit. Storage stays canonical; only the
+               box scales, so "2 hours" is 120 min here and 7200 s in the rule. -->
           <template x-if="valueKind(n.node) === 'number'">
-            <input type="number" step="any" x-model.number="n.node.value" @input="touchRule()"
-                   class="w-24 rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s focus:border-accent-500 focus:outline-none" />
+            <div class="flex items-stretch overflow-hidden rounded-md border border-line-strong bg-sunken focus-within:border-accent-500"
+                 :title="unitHint(n.node.key)">
+              <input type="number" :step="unitFor(n.node.key)?.step ?? 'any'"
+                     :value="numberIn(n.node)"
+                     @input="setNumberIn(n.node, $event.target.value)"
+                     class="w-24 bg-transparent px-2 py-1 text-body-s focus:outline-none" />
+              <template x-if="unitFor(n.node.key)">
+                <span class="flex items-center border-l border-line bg-raised px-2 text-micro text-ink-muted"
+                      x-text="unitFor(n.node.key).suffix"></span>
+              </template>
+            </div>
           </template>
 
           <template x-if="valueKind(n.node) === 'text'">
@@ -109,11 +130,11 @@
           </template>
 
           <template x-if="valueKind(n.node) === 'enum' && opArity(n.node) === 1">
-            <select x-model="n.node.value" @change="touchRule()"
+            <select @change="n.node.value = $event.target.value; touchRule()"
                     class="rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s focus:border-accent-500 focus:outline-none">
-              <option value="">—</option>
+              <option value="" :selected="!n.node.value">—</option>
               <template x-for="v in (specFor(n.node.key)?.enum_values ?? [])" :key="v">
-                <option :value="v" x-text="v"></option>
+                <option :value="v" :selected="v === n.node.value" x-text="v"></option>
               </template>
             </select>
           </template>
@@ -145,15 +166,25 @@
           </template>
 
           <!-- Range -->
+          <!-- Range. Both halves convert through the same adapter, so the unit
+               is stated once at the end rather than repeated on each box. -->
           <template x-if="opArity(n.node) === 2">
-            <div class="flex items-center gap-1">
-              <input type="number" step="any" :value="listValue(n.node)[0] ?? ''"
-                     @input="n.node.value = [$event.target.value, listValue(n.node)[1] ?? '']; touchRule()"
+            <div class="flex items-center gap-1.5" :title="unitHint(n.node.key)">
+              <input type="number" :step="unitFor(n.node.key)?.step ?? 'any'"
+                     :value="rangeIn(n.node, 0)"
+                     @input="setRangeIn(n.node, 0, $event.target.value)"
                      class="w-20 rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s focus:border-accent-500 focus:outline-none" />
               <span class="text-body-s text-ink-faint">and</span>
-              <input type="number" step="any" :value="listValue(n.node)[1] ?? ''"
-                     @input="n.node.value = [listValue(n.node)[0] ?? '', $event.target.value]; touchRule()"
-                     class="w-20 rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s focus:border-accent-500 focus:outline-none" />
+              <div class="flex items-stretch overflow-hidden rounded-md border border-line-strong bg-sunken focus-within:border-accent-500">
+                <input type="number" :step="unitFor(n.node.key)?.step ?? 'any'"
+                       :value="rangeIn(n.node, 1)"
+                       @input="setRangeIn(n.node, 1, $event.target.value)"
+                       class="w-20 bg-transparent px-2 py-1 text-body-s focus:outline-none" />
+                <template x-if="unitFor(n.node.key)">
+                  <span class="flex items-center border-l border-line bg-raised px-2 text-micro text-ink-muted"
+                        x-text="unitFor(n.node.key).suffix"></span>
+                </template>
+              </div>
             </div>
           </template>
 
