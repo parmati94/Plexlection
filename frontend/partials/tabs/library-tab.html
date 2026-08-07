@@ -1,19 +1,19 @@
 <section x-show="activeTab === 'library'" x-cloak
-         class="mx-auto max-w-[92rem] px-4 py-6" style="display: none;">
+         class="mx-auto max-w-[92rem] px-6 py-8 lg:px-10" style="display: none;">
 
-  <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+  <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
     <div>
-      <h2 class="font-display text-xl font-bold">Library</h2>
-      <p class="text-sm text-gray-500">
+      <h2 class="font-display text-display-l font-semibold">Library</h2>
+      <p class="text-body text-ink-muted">
         Every item Plexlection knows about, with the facts computed for it.
       </p>
     </div>
     <div class="flex items-center gap-2">
       <input type="search" x-model="librarySearch" @input="onLibrarySearch()"
              placeholder="Search titles…"
-             class="w-56 rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-sm placeholder-gray-600 focus:border-accent-500 focus:outline-none" />
+             class="w-56 rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-body placeholder-ink-faint focus:border-accent-500 focus:outline-none" />
       <button @click="startDiscovery()" :disabled="scanActive"
-              class="rounded-lg bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-500 disabled:opacity-50">
+              class="rounded-lg bg-accent-600 px-3 py-1.5 text-body font-medium text-white hover:bg-accent-500 disabled:opacity-50">
         <span x-text="scanActive ? 'Scanning…' : 'Discover from Plex'"></span>
       </button>
     </div>
@@ -22,10 +22,10 @@
   <!-- Stat strip; the path-status tiles double as filters -->
   <div class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
     <template x-for="s in libraryStats" :key="s.label">
-      <div class="rounded-xl border border-gray-800 bg-gray-900 px-4 py-3">
-        <p class="text-xs uppercase tracking-wide text-gray-500" x-text="s.label"></p>
-        <p class="tabular mt-1 font-display text-2xl font-bold"
-           :class="s.tone === 'warn' ? 'text-warn-400' : 'text-gray-100'"
+      <div class="rounded-xl border border-line bg-surface px-4 py-3">
+        <p class="text-body-s uppercase tracking-wide text-ink-muted" x-text="s.label"></p>
+        <p class="tabular mt-1 font-display text-display-m font-semibold"
+           :class="s.tone === 'warn' ? 'text-warn-400' : 'text-ink'"
            x-text="s.value"></p>
       </div>
     </template>
@@ -33,98 +33,108 @@
 
   <!-- Empty states, each pointing at the specific next action -->
   <div x-show="!itemCount && !plexConfigured"
-       class="rounded-xl border border-dashed border-gray-800 bg-gray-900/40 px-6 py-16 text-center">
-    <p class="text-4xl">🔌</p>
-    <p class="mt-3 font-display text-lg font-semibold text-gray-300">Connect Plex first</p>
-    <p class="mx-auto mt-1 max-w-md text-sm text-gray-500">
+       class="rounded-xl border border-dashed border-line bg-surface/50 px-6 py-16 text-center">
+    <svg class="mx-auto h-8 w-8 text-ink-faint"><use href="#i-plug"/></svg>
+    <p class="mt-3 font-display text-title font-semibold text-ink">Connect Plex first</p>
+    <p class="mx-auto mt-1 max-w-md text-body text-ink-muted">
       Plexlection needs your server URL and token before it can see anything.
     </p>
     <button @click="setTab('settings')"
-            class="mt-4 rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">
+            class="mt-4 rounded-lg bg-accent-600 px-4 py-2 text-body font-medium text-white hover:bg-accent-500">
       Open settings
     </button>
   </div>
 
   <div x-show="!itemCount && plexConfigured && !librariesSelected" style="display: none;"
-       class="rounded-xl border border-dashed border-gray-800 bg-gray-900/40 px-6 py-16 text-center">
-    <p class="text-4xl">📂</p>
-    <p class="mt-3 font-display text-lg font-semibold text-gray-300">Choose a library</p>
-    <p class="mx-auto mt-1 max-w-md text-sm text-gray-500">
+       class="rounded-xl border border-dashed border-line bg-surface/50 px-6 py-16 text-center">
+    <svg class="mx-auto h-8 w-8 text-ink-faint"><use href="#i-folder"/></svg>
+    <p class="mt-3 font-display text-title font-semibold text-ink">Choose a library</p>
+    <p class="mx-auto mt-1 max-w-md text-body text-ink-muted">
       Plex is connected. Pick which libraries to index in Settings.
     </p>
     <button @click="setTab('settings')"
-            class="mt-4 rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">
+            class="mt-4 rounded-lg bg-accent-600 px-4 py-2 text-body font-medium text-white hover:bg-accent-500">
       Choose libraries
     </button>
   </div>
 
   <div x-show="!itemCount && plexConfigured && librariesSelected" style="display: none;"
-       class="rounded-xl border border-dashed border-gray-800 bg-gray-900/40 px-6 py-16 text-center">
-    <p class="text-4xl">📚</p>
-    <p class="mt-3 font-display text-lg font-semibold text-gray-300">Ready to scan</p>
-    <p class="mx-auto mt-1 max-w-md text-sm text-gray-500">
+       class="rounded-xl border border-dashed border-line bg-surface/50 px-6 py-16 text-center">
+    <svg class="mx-auto h-8 w-8 text-ink-faint"><use href="#i-library"/></svg>
+    <p class="mt-3 font-display text-title font-semibold text-ink">Ready to scan</p>
+    <p class="mx-auto mt-1 max-w-md text-body text-ink-muted">
       Discovery reads your library from Plex and resolves each file's path inside
       this container. It writes nothing to Plex.
     </p>
     <button @click="startDiscovery()"
-            class="mt-4 rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">
+            class="mt-4 rounded-lg bg-accent-600 px-4 py-2 text-body font-medium text-white hover:bg-accent-500">
       Run discovery
     </button>
   </div>
 
   <!-- Item table -->
   <div x-show="itemCount > 0" style="display: none;">
-    <div class="mb-3 flex flex-wrap items-center gap-2 text-xs">
-      <span class="text-gray-500">Filter:</span>
+    <div class="mb-3 flex flex-wrap items-center gap-2 text-body-s">
+      <span class="text-ink-muted">Filter:</span>
       <template x-for="f in [{k:'',l:'All'},{k:'mapped',l:'Mapped'},{k:'unmapped',l:'Unmapped'},{k:'missing',l:'Missing'}]" :key="f.k">
         <button @click="setLibraryFilter(f.k)"
                 class="rounded-full border px-2.5 py-0.5 transition-colors"
                 :class="libraryFilter === f.k
                   ? 'border-accent-500 bg-accent-500/10 text-accent-300'
-                  : 'border-gray-700 text-gray-400 hover:bg-gray-800'"
+                  : 'border-line-strong text-ink-muted hover:bg-raised'"
                 x-text="f.l"></button>
       </template>
-      <span class="ml-auto tabular text-gray-500"
+      <span class="ml-auto tabular text-ink-muted"
             x-text="`${items.length} of ${itemTotal}`"></span>
     </div>
 
-    <div class="overflow-hidden rounded-xl border border-gray-800">
-      <table class="w-full text-sm">
-        <thead class="bg-gray-900 text-left text-xs uppercase tracking-wide text-gray-500">
+    <div class="overflow-hidden rounded-xl border border-line">
+      <table class="w-full text-body">
+        <thead class="bg-surface text-left text-body-s uppercase tracking-wide text-ink-muted">
           <tr>
-            <th class="cursor-pointer px-4 py-2.5 hover:text-gray-300" @click="setLibrarySort('title')">
+            <th class="w-12 px-4 py-3" title="Frame shape, drawn at the film's true aspect ratio">Frame</th>
+            <th class="cursor-pointer px-4 py-3 hover:text-ink" @click="setLibrarySort('title')">
               Title <span x-show="librarySort === 'title'" x-text="librarySortDir === 'asc' ? '▲' : '▼'"></span>
             </th>
-            <th class="cursor-pointer px-3 py-2.5 hover:text-gray-300" @click="setLibrarySort('year')">
+            <th class="cursor-pointer px-4 py-3 hover:text-ink" @click="setLibrarySort('year')">
               Year <span x-show="librarySort === 'year'" x-text="librarySortDir === 'asc' ? '▲' : '▼'"></span>
             </th>
-            <th class="cursor-pointer px-3 py-2.5 hover:text-gray-300" @click="setLibrarySort('size')">
+            <th class="cursor-pointer px-4 py-3 hover:text-ink" @click="setLibrarySort('size')">
               Size <span x-show="librarySort === 'size'" x-text="librarySortDir === 'asc' ? '▲' : '▼'"></span>
             </th>
-            <th class="px-3 py-2.5">Path</th>
-            <th class="px-3 py-2.5">Facts</th>
+            <th class="px-4 py-3">Path</th>
+            <th class="px-4 py-3">Facts</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-800">
+        <tbody class="divide-y divide-line">
           <template x-for="item in items" :key="item.id">
-            <tr @click="openItem(item.id)" class="cursor-pointer bg-gray-900/50 hover:bg-gray-800/60">
-              <td class="px-4 py-2">
-                <p class="font-medium text-gray-200" x-text="item.title"></p>
-                <p class="truncate font-mono text-[11px] text-gray-600" x-text="item.local_path ?? item.plex_path"></p>
+            <tr @click="openItem(item.id)" class="cursor-pointer bg-surface/60 hover:bg-raised/70">
+              <!-- The signature: the frame drawn at its real proportion, so the
+                   shape reads before the number does. -->
+              <td class="px-4 py-3">
+                <div class="ar-glyph" :class="arTone(item)"
+                     :style="`--ar:${item.facts?.video?.dar ?? 1.78}`"
+                     :title="item.facts?.video?.dar
+                       ? `${item.facts.video.dar}:1 — ${item.facts.video.aspect_bucket ?? ''}`
+                       : 'not scanned yet'"></div>
               </td>
-              <td class="tabular px-3 py-2 text-gray-400" x-text="item.year ?? '—'"></td>
-              <td class="tabular px-3 py-2 text-gray-400" x-text="formatBytes(item.file_size)"></td>
-              <td class="px-3 py-2">
-                <span class="rounded-full px-2 py-0.5 text-[11px]"
+              <td class="px-4 py-3">
+                <p class="font-medium text-ink" x-text="item.title"></p>
+                <p class="truncate font-mono text-micro text-ink-faint" x-text="item.local_path ?? item.plex_path"></p>
+              </td>
+              <td class="tabular px-4 py-3 text-ink-muted" x-text="item.year ?? '—'"></td>
+              <td class="tabular px-4 py-3 text-ink-muted" x-text="formatBytes(item.file_size)"></td>
+              <td class="px-4 py-3">
+                <span class="rounded-full px-2 py-0.5 text-micro"
                       :class="{
                         'bg-ok-900/40 text-ok-400': item.path_status === 'mapped',
                         'bg-warn-900/40 text-warn-400': item.path_status === 'unmapped',
                         'bg-danger-900/40 text-danger-400': item.path_status === 'missing',
-                        'bg-gray-800 text-gray-500': item.path_status === 'unknown'
+                        'bg-raised text-ink-muted': item.path_status === 'unknown'
                       }"
                       x-text="item.path_status"></span>
               </td>
-              <td class="tabular px-3 py-2 text-gray-500" x-text="item.fact_count || '—'"></td>
+              <td class="tabular px-4 py-3 text-ink-muted" x-text="item.fact_count || '—'"></td>
             </tr>
           </template>
         </tbody>
@@ -133,7 +143,7 @@
 
     <div x-show="hasMoreItems" class="mt-3 text-center">
       <button @click="loadMoreItems()" :disabled="itemsLoading"
-              class="rounded-lg border border-gray-700 px-4 py-1.5 text-sm text-gray-300 hover:bg-gray-800 disabled:opacity-50">
+              class="rounded-lg border border-line-strong px-4 py-1.5 text-body text-ink hover:bg-raised disabled:opacity-50">
         <span x-text="itemsLoading ? 'Loading…' : 'Load more'"></span>
       </button>
     </div>

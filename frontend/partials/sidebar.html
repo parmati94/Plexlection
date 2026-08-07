@@ -1,0 +1,87 @@
+<!-- Left rail.
+
+     The old header crammed the wordmark, five tabs, a warning, scan progress,
+     an SSE dot and a theme button into one 56px row — which is exactly why
+     everything had to be 11px. Navigation moves here so the page header has
+     room, and persistent status sits at the foot where it isn't competing for
+     attention with the tabs. -->
+<aside class="fixed inset-y-0 left-0 z-40 hidden w-rail flex-col border-r border-line bg-sunken lg:flex">
+
+  <div class="flex items-center gap-2.5 px-5 py-5">
+    <svg class="icon text-accent-400"><use href="#i-mark"/></svg>
+    <div class="font-display text-body font-semibold tracking-tight text-ink">
+      Plex<span class="text-accent-400">lection</span>
+    </div>
+  </div>
+
+  <nav class="flex-1 space-y-0.5 px-3">
+    <template x-for="t in tabs" :key="t.id">
+      <button @click="setTab(t.id)"
+              class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-body transition-colors"
+              :class="activeTab === t.id
+                ? 'bg-raised text-ink'
+                : 'text-ink-muted hover:bg-surface hover:text-ink'">
+        <svg class="icon-sm" :class="activeTab === t.id ? 'text-accent-400' : ''">
+          <use :href="`#i-${t.id}`"/>
+        </svg>
+        <span x-text="t.label"></span>
+        <!-- Counts belong next to the thing they count, not in a status bar. -->
+        <span x-show="t.id === 'library' && itemCount"
+              class="tabular ml-auto text-micro text-ink-faint" x-text="itemCount"></span>
+        <span x-show="t.id === 'rules' && rules.length"
+              class="tabular ml-auto text-micro text-ink-faint" x-text="rules.length"></span>
+      </button>
+    </template>
+  </nav>
+
+  <!-- Status foot -->
+  <div class="space-y-2 border-t border-line px-4 py-3">
+    <button x-show="unmappedCount > 0" @click="setTab('settings')"
+            class="flex w-full items-center gap-2 rounded-lg bg-warn-900/25 px-2.5 py-1.5 text-left text-micro text-warn-400 hover:bg-warn-900/40"
+            style="display: none;">
+      <svg class="icon-sm"><use href="#i-alert"/></svg>
+      <span><span class="tabular" x-text="unmappedCount"></span> unmapped</span>
+    </button>
+
+    <div x-show="scanActive" style="display: none;">
+      <div class="flex items-baseline justify-between text-micro text-ink-muted">
+        <span x-text="scanState?.provider ?? 'scanning'"></span>
+        <span class="tabular" x-text="`${Math.round(scanPct * 100)}%`"></span>
+      </div>
+      <div class="mt-1 h-1 overflow-hidden rounded-full bg-raised">
+        <div class="h-full rounded-full bg-accent-500 transition-all"
+             :style="`width:${Math.round(scanPct * 100)}%`"></div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2 text-micro text-ink-faint">
+      <span class="h-1.5 w-1.5 rounded-full"
+            :class="sseConnected ? 'bg-ok-500' : 'bg-line-strong'"></span>
+      <span x-text="sseConnected ? 'Live' : 'Offline'"></span>
+      <button x-show="loginEnabled" @click="logout()"
+              class="ml-auto hover:text-ink-muted" style="display: none;">Log out</button>
+    </div>
+  </div>
+</aside>
+
+<!-- Under lg the rail becomes a scrolling tab strip. -->
+<div class="sticky top-0 z-40 border-b border-line bg-sunken/95 backdrop-blur lg:hidden">
+  <div class="flex items-center gap-2 px-4 py-3">
+    <svg class="icon text-accent-400"><use href="#i-mark"/></svg>
+    <span class="font-display text-body font-semibold text-ink">
+      Plex<span class="text-accent-400">lection</span>
+    </span>
+    <span class="ml-auto h-1.5 w-1.5 rounded-full"
+          :class="sseConnected ? 'bg-ok-500' : 'bg-line-strong'"></span>
+  </div>
+  <nav class="no-scrollbar flex gap-1 overflow-x-auto px-3 pb-2">
+    <template x-for="t in tabs" :key="t.id">
+      <button @click="setTab(t.id)"
+              class="flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-body-s transition-colors"
+              :class="activeTab === t.id ? 'bg-raised text-ink' : 'text-ink-muted hover:bg-surface'">
+        <svg class="icon-sm"><use :href="`#i-${t.id}`"/></svg>
+        <span x-text="t.label"></span>
+      </button>
+    </template>
+  </nav>
+</div>

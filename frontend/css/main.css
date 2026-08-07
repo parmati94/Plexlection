@@ -2,23 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Accent theme palettes ──────────────────────────────────────────────────
-   Every accent-* Tailwind utility resolves to these vars (see tailwind.config.js).
-   Values are space-separated `R G B` triplets so Tailwind can apply <alpha-value>.
-   :root is the default (violet); setting data-theme on <html> swaps the accent in
-   one shot. This app is dark-only — data-theme changes hue, not light/dark. */
-:root, [data-theme="violet"] {
+/* ── IBM Plex, self-hosted ──────────────────────────────────────────────────
+   The previous build declared font-display: "Space Grotesk" but shipped no
+   @font-face and no font file, so every heading silently fell back to the same
+   system sans as body text. The app had one typeface at one size; that, more
+   than the sizing, is why it read as flat. */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal; font-weight: 500; font-display: swap;
+  src: url('/fonts/ibm-plex-sans-latin-500-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal; font-weight: 500; font-display: swap;
+  src: url('/fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal; font-weight: 600; font-display: swap;
+  src: url('/fonts/ibm-plex-mono-latin-600-normal.woff2') format('woff2');
+}
+
+/* ── Accent themes ──────────────────────────────────────────────────────────
+   R G B triplets so Tailwind's <alpha-value> keeps working. Default is amber:
+   projection-lamp warmth, on-subject for a film tool, and it separates this
+   from the violet/orange in the sibling apps. */
+:root, [data-theme="amber"] {
+  --accent-50: 254 247 233;  --accent-100: 253 238 205; --accent-200: 251 223 158;
+  --accent-300: 248 202 100; --accent-400: 244 179 54;  --accent-500: 232 154 21;
+  --accent-600: 201 124 12;  --accent-700: 161 96 14;   --accent-800: 130 78 18;
+  --accent-900: 106 64 19;
+}
+[data-theme="violet"] {
   --accent-50: 245 243 255;  --accent-100: 237 233 254; --accent-200: 221 214 254;
   --accent-300: 196 181 253; --accent-400: 167 139 250; --accent-500: 139 92 246;
   --accent-600: 124 58 237;  --accent-700: 109 40 217;  --accent-800: 91 33 182;
   --accent-900: 76 29 149;
-}
-/* Plex's own gold, for people who want the tool to match the server. */
-[data-theme="plex"] {
-  --accent-50: 254 249 231;  --accent-100: 253 242 202; --accent-200: 252 230 149;
-  --accent-300: 250 214 91;  --accent-400: 240 187 32;  --accent-500: 229 160 13;
-  --accent-600: 202 138 4;   --accent-700: 161 108 6;   --accent-800: 133 89 13;
-  --accent-900: 113 75 16;
 }
 [data-theme="emerald"] {
   --accent-50: 236 253 245;  --accent-100: 209 250 229; --accent-200: 167 243 208;
@@ -39,17 +68,35 @@
   --accent-900: 136 19 55;
 }
 
-/* ── Semantic feedback palette ──────────────────────────────────────────────
-   FIXED across every accent theme. "Danger" must never be the accent hue. */
+/* Fixed semantic palette. Meaning must not shift with the accent. */
 :root {
-  --ok-400: 74 222 128;   --ok-500: 34 197 94;    --ok-600: 22 163 74;    --ok-900: 20 83 45;
-  --warn-400: 251 191 36; --warn-500: 245 158 11; --warn-600: 217 119 6;  --warn-900: 120 53 15;
+  --ok-400: 74 222 128;      --ok-500: 34 197 94;     --ok-600: 22 163 74;     --ok-900: 20 83 45;
+  --warn-400: 251 191 36;    --warn-500: 245 158 11;  --warn-600: 217 119 6;   --warn-900: 120 53 15;
   --danger-400: 248 113 113; --danger-500: 239 68 68; --danger-600: 220 38 38; --danger-900: 127 29 29;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    font-feature-settings: 'cv05' 1; /* IBM Plex: single-storey l, clearer at small sizes */
+  }
+  /* Numerals never reflow as they tick. Applies everywhere by default because
+     this UI is mostly counters and measurements. */
+  table, .tabular, input[type="number"] {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent-500));
+    outline-offset: 2px;
+  }
 }
 
 [x-cloak] { display: none !important; }
 
-/* Reduced motion — seeded from prefers-reduced-motion, toggleable in settings. */
+/* Reduced motion — seeded from the OS, toggleable in Settings. */
 html.reduce-motion *,
 html.reduce-motion *::before,
 html.reduce-motion *::after {
@@ -59,14 +106,37 @@ html.reduce-motion *::after {
   scroll-behavior: auto !important;
 }
 
-/* Scrollbars, themed to the dark surface. */
-.app-scroll { scrollbar-width: thin; scrollbar-color: #4b5563 transparent; }
-.app-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+/* Scrollbars, matched to the surface ladder. */
+.app-scroll { scrollbar-width: thin; scrollbar-color: #333C44 transparent; }
+.app-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
 .app-scroll::-webkit-scrollbar-track { background: transparent; }
-.app-scroll::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
-.app-scroll::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+.app-scroll::-webkit-scrollbar-thumb { background: #232A30; border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
+.app-scroll::-webkit-scrollbar-thumb:hover { background: #333C44; background-clip: content-box; }
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
-/* Monospace numerics so progress counters don't jitter as digits change. */
-.tabular { font-variant-numeric: tabular-nums; }
+/* ── Aspect-ratio glyph ─────────────────────────────────────────────────────
+   The signature. A frame drawn at its true proportion, so you read the shape
+   before the number: 2.39 is a slot, 1.33 is nearly square. Width is fixed and
+   height derives from --ar, which the markup sets per item. */
+.ar-glyph {
+  --ar: 1.78;
+  width: 22px;
+  height: calc(22px / var(--ar));
+  border: 1px solid currentColor;
+  border-radius: 1px;
+  flex: none;
+  opacity: 0.8;
+}
+.ar-glyph-lg {
+  --ar: 1.78;
+  width: 40px;
+  height: calc(40px / var(--ar));
+  border: 1px solid currentColor;
+  border-radius: 1px;
+  flex: none;
+}
+
+/* Icons: one stroke weight everywhere, colour inherited. */
+.icon { width: 1.125rem; height: 1.125rem; flex: none; }
+.icon-sm { width: 1rem; height: 1rem; flex: none; }

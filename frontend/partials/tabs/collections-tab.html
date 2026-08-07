@@ -1,106 +1,107 @@
 <section x-show="activeTab === 'collections'" x-cloak
-         class="mx-auto max-w-[92rem] px-4 py-6" style="display: none;">
+         class="mx-auto max-w-[92rem] px-6 py-8 lg:px-10" style="display: none;">
 
-  <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+  <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
     <div>
-      <h2 class="font-display text-xl font-bold">Collections</h2>
-      <p class="text-sm text-gray-500">
+      <h2 class="font-display text-display-l font-semibold">Collections</h2>
+      <p class="text-body text-ink-muted">
         A rule's matches become a Plex label, backed by a smart collection.
         Every sync previews as a diff first.
       </p>
     </div>
     <div class="flex items-center gap-2">
       <span x-show="dryRunDefault"
-            class="rounded-full bg-warn-900/40 px-2.5 py-1 text-xs text-warn-400"
+            class="rounded-full bg-warn-900/40 px-2.5 py-1 text-body-s text-warn-400"
             title="Sync buttons only preview. You can still write deliberately from the diff modal.">
         dry run on
       </span>
       <button @click="syncAll()" :disabled="syncing || !collections.length"
-              class="rounded-lg bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-500 disabled:opacity-50">
+              class="rounded-lg bg-accent-600 px-3 py-1.5 text-body font-medium text-white hover:bg-accent-500 disabled:opacity-50">
         Sync all
       </button>
     </div>
   </div>
 
   <template x-if="!collections.length">
-    <div class="rounded-xl border border-dashed border-gray-800 bg-gray-900/40 px-6 py-16 text-center">
-      <p class="text-4xl">🏷️</p>
-      <p class="mt-3 font-display text-lg font-semibold text-gray-300">No rules yet</p>
-      <p class="mx-auto mt-1 max-w-md text-sm text-gray-500">
+    <div class="rounded-xl border border-dashed border-line bg-surface/50 px-6 py-16 text-center">
+      <svg class="mx-auto h-8 w-8 text-ink-faint"><use href="#i-collections"/></svg>
+      <p class="mt-3 font-display text-title font-semibold text-ink">No rules yet</p>
+      <p class="mx-auto mt-1 max-w-md text-body text-ink-muted">
         Build a rule first, then sync it here.
       </p>
       <button @click="setTab('rules')"
-              class="mt-4 rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">
+              class="mt-4 rounded-lg bg-accent-600 px-4 py-2 text-body font-medium text-white hover:bg-accent-500">
         Go to rules
       </button>
     </div>
   </template>
 
-  <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
     <template x-for="c in collections" :key="c.id">
-      <div class="rounded-xl border border-gray-800 bg-gray-900 p-4">
+      <div class="rounded-xl border border-line bg-surface p-5">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
-            <h3 class="truncate font-display text-sm font-semibold text-gray-200"
+            <h3 class="truncate font-display text-body font-semibold text-ink"
                 x-text="c.collection_title || c.name"></h3>
-            <p class="truncate font-mono text-[10px] text-gray-600" x-text="c.labels.main"></p>
+            <p class="truncate font-mono text-micro text-ink-faint" x-text="c.labels.main"></p>
           </div>
-          <span class="rounded-full px-2 py-0.5 text-[10px]"
-                :class="c.enabled ? 'bg-ok-900/40 text-ok-400' : 'bg-gray-800 text-gray-500'"
+          <span class="rounded-full px-2 py-0.5 text-micro"
+                :class="c.enabled ? 'bg-ok-900/40 text-ok-400' : 'bg-raised text-ink-muted'"
                 x-text="c.enabled ? 'enabled' : 'off'"></span>
         </div>
 
-        <dl class="mt-3 grid grid-cols-2 gap-y-1 text-xs">
-          <dt class="text-gray-500">Synced items</dt>
-          <dd class="tabular text-right text-gray-300" x-text="c.synced_count ?? 0"></dd>
-          <dt class="text-gray-500">Last match</dt>
-          <dd class="tabular text-right text-gray-300" x-text="c.last_match_count ?? '—'"></dd>
-          <dt class="text-gray-500">Last sync</dt>
-          <dd class="text-right text-gray-400" x-text="formatDate(c.last_sync_at)"></dd>
+        <dl class="mt-3 grid grid-cols-2 gap-y-1 text-body-s">
+          <dt class="text-ink-muted">Synced items</dt>
+          <dd class="tabular text-right text-ink" x-text="c.synced_count ?? 0"></dd>
+          <dt class="text-ink-muted">Last match</dt>
+          <dd class="tabular text-right text-ink" x-text="c.last_match_count ?? '—'"></dd>
+          <dt class="text-ink-muted">Last sync</dt>
+          <dd class="text-right text-ink-muted" x-text="formatDate(c.last_sync_at)"></dd>
         </dl>
 
         <div class="mt-3 flex flex-wrap items-center gap-1.5">
           <button @click="showDiff(c.id)"
-                  class="rounded-lg border border-gray-600 px-2.5 py-1 text-xs text-gray-300 hover:bg-gray-800">
+                  class="rounded-lg border border-line-strong px-2.5 py-1 text-body-s text-ink hover:bg-raised">
             Preview diff
           </button>
           <button @click="syncCollection(c.id)" :disabled="syncing === c.id"
-                  class="rounded-lg bg-accent-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-accent-500 disabled:opacity-50">
+                  class="rounded-lg bg-accent-600 px-2.5 py-1 text-body-s font-medium text-white hover:bg-accent-500 disabled:opacity-50">
             <span x-text="syncing === c.id ? 'Syncing…' : 'Sync'"></span>
           </button>
 
-          <label class="cursor-pointer rounded-lg border border-gray-700 px-2 py-1 text-xs text-gray-400 hover:bg-gray-800"
+          <label class="cursor-pointer rounded-lg border border-line-strong px-2 py-1 text-body-s text-ink-muted hover:bg-raised"
                  :title="c.poster_ref ? 'Replace poster' : 'Upload a poster'">
-            <span x-text="c.poster_ref ? '🖼 replace' : '🖼 poster'"></span>
+            <svg class="icon-sm inline-block align-[-3px]"><use href="#i-image"/></svg>
+            <span x-text="c.poster_ref ? 'Replace' : 'Poster'"></span>
             <input type="file" accept="image/*" class="hidden"
                    @change="uploadPoster(c.id, $event)" />
           </label>
           <button x-show="c.poster_ref" @click="removePoster(c.id)"
-                  class="text-xs text-gray-600 hover:text-danger-400">clear</button>
+                  class="text-body-s text-ink-faint hover:text-danger-400">clear</button>
 
           <button @click="unsyncCollection(c.id, c.collection_title || c.name)"
                   x-show="c.synced_count"
                   title="Remove the labels we applied and delete the collection"
-                  class="ml-auto text-xs text-gray-600 hover:text-danger-400">
+                  class="ml-auto text-body-s text-ink-faint hover:text-danger-400">
             unsync
           </button>
           <button @click="unsyncCollection(c.id, c.collection_title || c.name, true)"
                   title="Strip the label from every item carrying it, even ones we didn't apply"
-                  class="text-xs text-gray-700 hover:text-danger-400">
+                  class="text-body-s text-ink-faint hover:text-danger-400">
             force
           </button>
         </div>
 
         <button @click="loadHistory(c.id)"
-                class="mt-2 text-[11px] text-gray-600 hover:text-gray-400">
+                class="mt-2 text-micro text-ink-faint hover:text-ink-muted">
           History
         </button>
         <template x-if="historyFor === c.id && syncHistory.length">
-          <div class="mt-1.5 space-y-0.5 border-t border-gray-800 pt-1.5">
+          <div class="mt-1.5 space-y-0.5 border-t border-line pt-1.5">
             <template x-for="h in syncHistory.slice(0, 5)" :key="h.id">
-              <p class="text-[11px] text-gray-500">
+              <p class="text-micro text-ink-muted">
                 <span x-text="formatDate(h.started_at)"></span>
-                <span x-show="h.dry_run" class="text-gray-600">(dry)</span>
+                <span x-show="h.dry_run" class="text-ink-faint">(dry)</span>
                 <span class="tabular" x-text="`+${h.added_count} −${h.removed_count}`"></span>
               </p>
             </template>
@@ -113,13 +114,13 @@
   <!-- Curation hint: smart collections can't be hand-edited, so this is how
        manual overrides actually work. -->
   <div x-show="collections.length" style="display: none;"
-       class="mt-6 rounded-xl border border-gray-800 bg-gray-900/50 p-4 text-xs text-gray-500">
-    <p class="font-medium text-gray-400">Overriding a collection by hand</p>
+       class="mt-6 rounded-xl border border-line bg-surface/60 p-4 text-body-s text-ink-muted">
+    <p class="font-medium text-ink-muted">Overriding a collection by hand</p>
     <p class="mt-1">
       A Plex smart collection has no "add to collection" action — its membership comes
       from the filter. To override, add one of these labels to an item in Plex:
     </p>
-    <ul class="mt-1.5 space-y-0.5 font-mono text-[11px]">
+    <ul class="mt-1.5 space-y-0.5 font-mono text-micro">
       <li><span class="text-accent-400">plexlection:&lt;slug&gt;:pin</span> — force it in</li>
       <li><span class="text-accent-400">plexlection:&lt;slug&gt;:veto</span> — force it out</li>
     </ul>

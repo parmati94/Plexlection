@@ -21,19 +21,19 @@ import { scanMixin } from './scan.js';
 import { settingsMixin } from './settings.js';
 
 const THEMES = [
+  { id: 'amber', label: 'Amber', swatch: '#e89a15' },
   { id: 'violet', label: 'Violet', swatch: '#8b5cf6' },
-  { id: 'plex', label: 'Plex Gold', swatch: '#e5a00d' },
   { id: 'emerald', label: 'Emerald', swatch: '#10b981' },
   { id: 'blue', label: 'Blue', swatch: '#3b82f6' },
   { id: 'rose', label: 'Rose', swatch: '#f43f5e' },
 ];
 
 const TABS = [
-  { id: 'library', label: 'Library', icon: '📚' },
-  { id: 'rules', label: 'Rules', icon: '🧩' },
-  { id: 'collections', label: 'Collections', icon: '🏷️' },
-  { id: 'scan', label: 'Scan', icon: '🔍' },
-  { id: 'settings', label: 'Settings', icon: '⚙️' },
+  { id: 'library', label: 'Library' },
+  { id: 'rules', label: 'Rules' },
+  { id: 'collections', label: 'Collections' },
+  { id: 'scan', label: 'Scan' },
+  { id: 'settings', label: 'Settings' },
 ];
 
 const LS = {
@@ -55,7 +55,7 @@ document.addEventListener('alpine:init', () => {
     tabs: TABS,
     themes: THEMES,
     activeTab: 'library',
-    theme: 'violet',
+    theme: 'amber',
     reduceMotion: false,
 
     loading: false,
@@ -169,7 +169,7 @@ document.addEventListener('alpine:init', () => {
     // ── lifecycle ───────────────────────────────────────────────────────
     async init() {
       // Theme first, before paint, so there's no flash of the wrong accent.
-      this.applyTheme(localStorage.getItem(LS.theme) || 'violet');
+      this.applyTheme(localStorage.getItem(LS.theme) || 'amber');
       this.setReduceMotion(
         localStorage.getItem(LS.reduceMotion) === 'true' ||
           (localStorage.getItem(LS.reduceMotion) === null &&
@@ -239,16 +239,12 @@ document.addEventListener('alpine:init', () => {
     },
 
     applyTheme(id) {
-      if (!THEMES.some((t) => t.id === id)) id = 'violet';
+      if (!THEMES.some((t) => t.id === id)) id = 'amber';
       this.theme = id;
       document.documentElement.setAttribute('data-theme', id);
       localStorage.setItem(LS.theme, id);
     },
 
-    cycleTheme() {
-      const i = THEMES.findIndex((t) => t.id === this.theme);
-      this.applyTheme(THEMES[(i + 1) % THEMES.length].id);
-    },
 
     setReduceMotion(on) {
       this.reduceMotion = !!on;

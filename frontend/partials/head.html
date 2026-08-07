@@ -4,11 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Plexlection</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🎞️</text></svg>" />
+  <!-- The wordmark: a frame with its matte bars, at scope proportions. -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e89a15' stroke-width='1.5'><rect x='2.5' y='4' width='19' height='16' rx='1.5'/><path d='M2.5 8.5h19M2.5 15.5h19' opacity='.55'/></svg>" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="/fonts/ibm-plex-sans-latin-400-normal.woff2" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="/fonts/ibm-plex-mono-latin-500-normal.woff2" />
   <link rel="stylesheet" href="/css/main.css" />
   <script type="module" src="/js/app.js"></script>
 </head>
-<body class="bg-gray-950 text-gray-100 min-h-screen antialiased">
+<body class="min-h-screen bg-sunken font-sans text-body text-ink">
 <!-- No x-init="init()" — Alpine 3 auto-calls a method named init() on the
      component. Adding x-init as well would run it twice (double listeners,
      double fetches, a second EventSource). -->

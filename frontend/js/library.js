@@ -121,6 +121,17 @@ export function libraryMixin() {
     // cancelScan lives in scan.js — defining it in two mixins means whichever
     // is spread last silently wins.
 
+    /**
+     * Colour for the aspect-ratio glyph. Only scope (>= 2.3:1) is picked out —
+     * it's the founding use case, and if every frame were accented the shape
+     * would stop carrying information.
+     */
+    arTone(item) {
+      const dar = item.facts?.video?.dar;
+      if (!dar) return 'text-ink-faint/40';
+      return dar >= 2.3 ? 'text-accent-400' : 'text-ink-faint';
+    },
+
     // ── formatting ──────────────────────────────────────────────────────
     formatBytes(n) {
       if (!n) return '—';
