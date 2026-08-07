@@ -14,6 +14,7 @@ export function libraryMixin() {
         const res = await api.items.list({
           q: this.librarySearch,
           path_status: this.libraryFilter,
+          item_type: this.typeFilter,
           sort: this.librarySort,
           direction: this.librarySortDir,
           limit: this.itemLimit,
@@ -51,6 +52,11 @@ export function libraryMixin() {
 
     setLibraryFilter(status) {
       this.libraryFilter = this.libraryFilter === status ? '' : status;
+      this.loadItems(true);
+    },
+
+    setTypeFilter(type) {
+      this.typeFilter = type;
       this.loadItems(true);
     },
 

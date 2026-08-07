@@ -75,7 +75,18 @@
   <!-- Item table -->
   <div x-show="itemCount > 0" style="display: none;">
     <div class="mb-3 flex flex-wrap items-center gap-2 text-body-s">
-      <span class="text-ink-muted">Filter:</span>
+      <!-- 21k episodes make an unfiltered table useless, so type comes first. -->
+      <span class="text-ink-muted">Type:</span>
+      <template x-for="t in [{k:'',l:'All'},{k:'movie',l:'Movies'},{k:'show',l:'Shows'},{k:'episode',l:'Episodes'}]" :key="t.k">
+        <button @click="setTypeFilter(t.k)"
+                class="rounded-full border px-2.5 py-0.5 transition-colors"
+                :class="typeFilter === t.k
+                  ? 'border-accent-500 bg-accent-500/10 text-accent-300'
+                  : 'border-line-strong text-ink-muted hover:bg-raised'"
+                x-text="t.l"></button>
+      </template>
+      <span class="mx-1 text-ink-faint">·</span>
+      <span class="text-ink-muted">Path:</span>
       <template x-for="f in [{k:'',l:'All'},{k:'mapped',l:'Mapped'},{k:'unmapped',l:'Unmapped'},{k:'missing',l:'Missing'}]" :key="f.k">
         <button @click="setLibraryFilter(f.k)"
                 class="rounded-full border px-2.5 py-0.5 transition-colors"

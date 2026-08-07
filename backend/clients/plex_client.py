@@ -22,6 +22,14 @@ PAGE_SIZE = 200
 # Plex libtype -> our item_type
 LIBTYPE_MOVIE = "movie"
 LIBTYPE_SHOW = "show"
+LIBTYPE_EPISODE = "episode"
+
+# What a section of each type contributes to the catalogue. Seasons are
+# deliberately absent: Plex can't put one in a collection.
+SECTION_LIBTYPES = {
+    "movie": (LIBTYPE_MOVIE,),
+    "show": (LIBTYPE_SHOW, LIBTYPE_EPISODE),
+}
 
 
 @dataclass
@@ -41,6 +49,14 @@ class PlexItem:
     plex_path: str | None
     plex_size: int | None
     duration_ms: int | None
+    # ── TV ────────────────────────────────────────────────────────────────
+    tvdb_id: int | None = None
+    parent_key: str | None = None      # episode -> its show's ratingKey
+    season_number: int | None = None
+    episode_number: int | None = None
+    child_count: int | None = None     # show -> seasons
+    leaf_count: int | None = None      # show -> episodes Plex knows about
+    viewed_leaf_count: int | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -52,20 +68,26 @@ class PlexSection:
     item_count: int | None = None
 
 
-def _parse_guids(video) -> tuple[int | None, str | None]:
-    """Pull tmdb/imdb ids out of the Plex Movie agent's guid list."""
+def _parse_guids(video) -> tuple[int | None, str | None, int | None]:
+    """Pull tmdb/imdb/tvdb ids out of the Plex agent's guid list.
+
+    Shows carry all three; tvdb is the one Sonarr keys on.
+    """
     tmdb_id: int | None = None
     imdb_id: str | None = None
+    tvdb_id: int | None = None
     for guid in getattr(video, "guids", None) or []:
         gid = getattr(guid, "id", "") or ""
-        if gid.startswith("tmdb://"):
-            try:
+        try:
+            if gid.startswith("tmdb://"):
                 tmdb_id = int(gid.split("://", 1)[1])
-            except ValueError:
-                pass
-        elif gid.startswith("imdb://"):
-            imdb_id = gid.split("://", 1)[1]
-    return tmdb_id, imdb_id
+            elif gid.startswith("tvdb://"):
+                tvdb_id = int(gid.split("://", 1)[1])
+            elif gid.startswith("imdb://"):
+                imdb_id = gid.split("://", 1)[1]
+        except ValueError:
+            continue
+    return tmdb_id, imdb_id, tvdb_id
 
 
 def _primary_part(video) -> tuple[str | None, str | None, int | None]:
@@ -185,8 +207,16 @@ class PlexClient:
 
             page: list[PlexItem] = []
             for video in videos:
-                tmdb_id, imdb_id = _parse_guids(video)
+                tmdb_id, imdb_id, tvdb_id = _parse_guids(video)
                 part_id, path, size = _primary_part(video)
+
+                # Episodes hang off their show. grandparentRatingKey is the show;
+                # parentRatingKey is the season, which we don't index.
+                parent_key = None
+                if libtype == LIBTYPE_EPISODE:
+                    gp = getattr(video, "grandparentRatingKey", None)
+                    parent_key = str(gp) if gp is not None else None
+
                 page.append(PlexItem(
                     rating_key=str(video.ratingKey),
                     guid=getattr(video, "guid", None),
@@ -198,10 +228,17 @@ class PlexClient:
                     updated_at=int(video.updatedAt.timestamp()) if getattr(video, "updatedAt", None) else None,
                     tmdb_id=tmdb_id,
                     imdb_id=imdb_id,
+                    tvdb_id=tvdb_id,
                     part_id=part_id,
                     plex_path=path,
                     plex_size=size,
                     duration_ms=getattr(video, "duration", None),
+                    parent_key=parent_key,
+                    season_number=getattr(video, "parentIndex", None) if libtype == LIBTYPE_EPISODE else None,
+                    episode_number=getattr(video, "index", None) if libtype == LIBTYPE_EPISODE else None,
+                    child_count=getattr(video, "childCount", None) if libtype == LIBTYPE_SHOW else None,
+                    leaf_count=getattr(video, "leafCount", None) if libtype == LIBTYPE_SHOW else None,
+                    viewed_leaf_count=getattr(video, "viewedLeafCount", None) if libtype == LIBTYPE_SHOW else None,
                 ))
 
             yield page

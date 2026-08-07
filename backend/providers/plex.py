@@ -26,6 +26,8 @@ class PlexFactProvider(FactProvider):
     batch_size = 0  # whole set at once; there's no per-item cost to amortise
     max_age_s = None
     default_concurrency = 1
+    # Plex has metadata for everything it indexes.
+    default_applies_to = ("movie", "show", "episode")
 
     facts = (
         FactSpec("plex.title", "Title", FactType.STRING,

@@ -42,7 +42,9 @@ COST_ORDER = {
 ITEM_COLUMNS = (
     "id, rating_key, library_key, item_type, title, year, tmdb_id, imdb_id, guid, "
     "plex_path, local_path, path_status, file_size, file_mtime, file_fp, "
-    "plex_added_at, plex_updated_at, plex_duration_ms, facts"
+    "plex_added_at, plex_updated_at, plex_duration_ms, "
+    "tvdb_id, parent_key, season_number, episode_number, "
+    "child_count, leaf_count, viewed_leaf_count, facts"
 )
 
 
@@ -201,11 +203,21 @@ class ScanEngine:
 
     # ── planning ──────────────────────────────────────────────────────────
     async def plan(self, provider, force: bool = False) -> list[ItemRow]:
-        """Items this provider should run against."""
+        """Items this provider should run against.
+
+        Filtered by the provider's declared item types, so ffprobe never even
+        sees the 508 shows it would only skip — and doesn't record 508 skip rows
+        on every scan saying so.
+        """
         where, params = provider.selector()
+        types = provider.default_applies_to
+        type_clause = ""
+        if types:
+            type_clause = f" AND item_type IN ({','.join('?' * len(types))})"
         rows = await self.db.fetch_all(
-            f"SELECT {ITEM_COLUMNS} FROM items WHERE deleted_at IS NULL AND ({where})",
-            params,
+            f"SELECT {ITEM_COLUMNS} FROM items "
+            f"WHERE deleted_at IS NULL{type_clause} AND ({where})",
+            (*types, *params),
         )
         items = [_row_to_item(r) for r in rows]
         if not items:

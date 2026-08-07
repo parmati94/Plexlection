@@ -34,6 +34,9 @@ class TautulliProvider(FactProvider):
     batch_size = 0          # the whole library in one call
     max_age_s = 6 * 3600    # history always drifts
     default_concurrency = 1
+    # History rows key on the episode's own ratingKey, so watch facts land per
+    # episode. Show-level watch comes from Plex's viewedLeafCount instead.
+    default_applies_to = ("movie", "episode")
 
     facts = (
         FactSpec("watch.play_count", "Play count", FactType.NUMBER,

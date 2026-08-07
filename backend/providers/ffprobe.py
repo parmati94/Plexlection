@@ -113,6 +113,8 @@ class FFprobeProvider(FactProvider):
     max_age_s = None  # immutable until the file changes
     default_concurrency = 4
     file_fingerprinted = True
+    # Anything with a file. Shows have none — their facts come from rollup.
+    default_applies_to = ("movie", "episode")
 
     facts = (
         # ── video ─────────────────────────────────────────────────────────

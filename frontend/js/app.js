@@ -87,6 +87,7 @@ document.addEventListener('alpine:init', () => {
     itemsLoading: false,
     librarySearch: '',
     libraryFilter: '',
+    typeFilter: '',
     librarySort: 'title',
     librarySortDir: 'asc',
     itemDrawer: { open: false, loading: false, item: null, provenance: [] },

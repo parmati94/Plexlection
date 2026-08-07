@@ -118,9 +118,7 @@ async def plex_sections():
                 "type": s.type,
                 "item_count": s.item_count,
                 "selected": s.key in selected,
-                # v1 indexes movies only; the schema supports TV but nothing
-                # populates it yet, so don't offer a library that won't scan.
-                "supported": s.type == "movie",
+                "supported": s.type in ("movie", "show"),
             }
             for s in sections
         ],

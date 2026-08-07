@@ -81,6 +81,24 @@
               </div>
             </div>
 
+            <!-- What the rule collects. Changing this changes which facts are
+                 available, because a show has no file of its own. -->
+            <div class="mt-3">
+              <label class="mb-1 block text-body-s text-ink-muted">Collect</label>
+              <div class="inline-flex overflow-hidden rounded-lg border border-line-strong">
+                <template x-for="t in [{v:'movie',l:'Movies'},{v:'show',l:'TV shows'}]" :key="t.v">
+                  <button @click="setRuleTarget(t.v)"
+                          class="px-3 py-1.5 text-body-s font-medium transition-colors"
+                          :class="(editingRule.item_types || []).includes(t.v)
+                            ? 'bg-accent-600 text-white'
+                            : 'text-ink-muted hover:bg-raised'"
+                          x-text="t.l"></button>
+                </template>
+              </div>
+              <span class="ml-2 text-micro text-ink-faint"
+                    x-text="`${factOptionGroups().reduce((n,g)=>n+g.facts.length,0)} facts available`"></span>
+            </div>
+
             <div class="mt-3 grid gap-3 sm:grid-cols-2">
               <div>
                 <label class="mb-1 block text-body-s text-ink-muted">Order by</label>

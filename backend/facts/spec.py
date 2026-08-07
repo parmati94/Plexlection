@@ -54,6 +54,14 @@ class FactSpec:
     aggregatable: bool = False             # eligible for percentile/median predicates
     example: Any = None
     provider: str = ""                     # stamped by the registry
+    # Which item types this fact can ever be set on. Without it the rule builder
+    # offers "Aspect ratio" on a rule targeting shows — a condition that can
+    # never match, because shows have no file.
+    #
+    # Empty means "inherit from the provider", which is the usual case: a
+    # provider's facts almost always share its scope, and stating it 23 times
+    # in ffprobe would be noise.
+    applies_to: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not KEY_RE.fullmatch(self.key):
