@@ -37,6 +37,9 @@ class DerivedProvider(FactProvider):
     batch_size = 0
     max_age_s = None
     default_concurrency = 1
+    # Reads file-derived facts, so it follows ffprobe's scope. TMDB-sourced
+    # derivations simply stay unset on episodes, which have no TMDB id.
+    default_applies_to = ("movie", "episode")
 
     facts = (
         FactSpec("derived.bitrate_per_pixel", "Encode efficiency", FactType.NUMBER,

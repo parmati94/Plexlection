@@ -361,13 +361,61 @@ export function ruleBuilderMixin() {
      * before you pick, not after.
      */
     factOptionGroups() {
+      // Only facts that can exist on what this rule targets. A show has no
+      // file, so offering "Aspect ratio" on a show rule is offering a condition
+      // that can never match.
+      const targets = this.editingRule?.item_types ?? ['movie'];
       const groups = {};
       for (const f of this.registry) {
+        const scope = f.applies_to ?? ['movie'];
+        if (!targets.some((t) => scope.includes(t))) continue;
         const u = this.unitFor(f.key);
         const label = u && u.suffix !== ':1' ? `${f.label} (${u.suffix})` : f.label;
         (groups[f.group] ??= []).push({ ...f, optionLabel: label });
       }
       return Object.entries(groups).map(([group, facts]) => ({ group, facts }));
+    },
+
+    /**
+     * Switch a rule between movies and shows.
+     *
+     * The fact set changes with the target, so any condition referencing a fact
+     * that no longer applies is dropped rather than left to fail validation on
+     * the next preview.
+     */
+    setRuleTarget(type) {
+      if (!this.editingRule) return;
+      this.editingRule.item_types = [type];
+
+      const valid = new Set(this.factOptionGroups().flatMap((g) => g.facts.map((f) => f.key)));
+      let dropped = 0;
+      const prune = (node) => {
+        if (!node) return node;
+        if (node.type === 'cmp' || node.type === 'agg_cmp') {
+          return valid.has(node.key) ? node : (dropped++, null);
+        }
+        if (node.type === 'not') {
+          const child = prune(node.child);
+          return child ? { ...node, child } : null;
+        }
+        if (node.children) {
+          node.children = node.children.map(prune).filter(Boolean);
+        }
+        return node;
+      };
+      prune(this.editingRule.rule.root);
+
+      // Ordering can reference a fact that's gone too.
+      if (this.editingRule.order_by_key && !valid.has(this.editingRule.order_by_key)) {
+        this.editingRule.order_by_key = null;
+      }
+      if (dropped) {
+        this.showToast(
+          `Removed ${dropped} condition${dropped === 1 ? '' : 's'} that don't apply to ${type}s.`,
+          false,
+        );
+      }
+      this.touchRule();
     },
 
     /** Aggregatable facts for the Order-by select, unit-qualified. */

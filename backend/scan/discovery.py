@@ -18,7 +18,12 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 
-from backend.clients.plex_client import PlexClient, PlexItem
+from backend.clients.plex_client import (
+    LIBTYPE_MOVIE,
+    SECTION_LIBTYPES,
+    PlexClient,
+    PlexItem,
+)
 from backend.common.logging_config import get_logger
 from backend.models.settings import Settings
 from backend.utils import path_mapper
@@ -38,10 +43,12 @@ class DiscoveryResult:
     mapped: int = 0
     unmapped: int = 0
     missing: int = 0
+    by_type: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return {
             "sections": self.sections,
+            "by_type": self.by_type,
             "seen": self.seen,
             "added": self.added,
             "updated": self.updated,
@@ -54,24 +61,45 @@ class DiscoveryResult:
         }
 
 
-_INSERT_SQL = """
-INSERT INTO items (
-  library_key, rating_key, guid, tmdb_id, imdb_id, item_type, title, sort_title, year,
-  plex_added_at, plex_updated_at, plex_duration_ms, part_id, plex_path, local_path,
-  path_status, file_size, file_mtime, file_fp, facts, first_seen, last_seen, seen_run,
-  deleted_at
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'{}',?,?,?,NULL)
-"""
+# Columns written by both insert and update, in one place. The SQL below is
+# generated from this list rather than hand-written: keeping three literals
+# (columns, placeholders, values tuple) in agreement by eye is how the
+# item_type column went missing the first time.
+_COMMON_COLUMNS = (
+    "guid", "tmdb_id", "imdb_id", "tvdb_id", "item_type", "title", "sort_title",
+    "year", "plex_added_at", "plex_updated_at", "plex_duration_ms",
+    "parent_key", "season_number", "episode_number",
+    "child_count", "leaf_count", "viewed_leaf_count",
+    "part_id", "plex_path", "local_path", "path_status",
+    "file_size", "file_mtime", "file_fp",
+)
 
-_UPDATE_SQL = """
-UPDATE items SET
-  rating_key = ?, guid = ?, tmdb_id = ?, imdb_id = ?, item_type = ?, title = ?,
-  sort_title = ?, year = ?, plex_added_at = ?, plex_updated_at = ?,
-  plex_duration_ms = ?, part_id = ?, plex_path = ?, local_path = ?, path_status = ?,
-  file_size = ?, file_mtime = ?, file_fp = ?, last_seen = ?, seen_run = ?,
-  deleted_at = NULL
-WHERE id = ?
-"""
+_INSERT_SQL = (
+    "INSERT INTO items (library_key, rating_key, "
+    + ", ".join(_COMMON_COLUMNS)
+    + ", facts, first_seen, last_seen, seen_run, deleted_at) VALUES ("
+    + ",".join("?" * (2 + len(_COMMON_COLUMNS)))
+    + ",'{}',?,?,?,NULL)"
+)
+
+_UPDATE_SQL = (
+    "UPDATE items SET rating_key = ?, "
+    + ", ".join(f"{c} = ?" for c in _COMMON_COLUMNS)
+    + ", last_seen = ?, seen_run = ?, deleted_at = NULL WHERE id = ?"
+)
+
+
+def _common_values(item: PlexItem, mapped: path_mapper.MappedFile) -> tuple:
+    """Values for _COMMON_COLUMNS, in that exact order."""
+    return (
+        item.guid, item.tmdb_id, item.imdb_id, item.tvdb_id, item.item_type,
+        item.title, item.sort_title, item.year, item.added_at, item.updated_at,
+        item.duration_ms,
+        item.parent_key, item.season_number, item.episode_number,
+        item.child_count, item.leaf_count, item.viewed_leaf_count,
+        item.part_id, item.plex_path,
+        mapped.local_path, mapped.status, mapped.size, mapped.mtime, mapped.fingerprint,
+    )
 
 
 async def _resolve_page(items: list[PlexItem], settings: Settings) -> list[path_mapper.MappedFile]:
@@ -115,22 +143,39 @@ async def run_discovery(
         logger.warning("No Plex libraries selected — nothing to discover")
         return result
 
+    # A show section contributes two passes: the shows themselves, then every
+    # episode. Seasons are skipped — Plex can't collect one.
+    try:
+        section_types = {s.key: s.type for s in await plex.sections()}
+    except Exception as exc:
+        logger.warning("Could not list sections (%s); assuming movie libraries", exc)
+        section_types = {}
+
     for section_key in sections:
         result.sections.append(section_key)
-        try:
-            total = await plex.section_size(section_key)
-        except Exception as exc:
-            logger.warning("Could not size section %s: %s", section_key, exc)
-            total = 0
+        libtypes = SECTION_LIBTYPES.get(section_types.get(section_key, "movie"), (LIBTYPE_MOVIE,))
 
-        logger.info("🔎 Discovering section %s (%d items)", section_key, total)
+        for libtype in libtypes:
+            try:
+                total = await plex.section_size(section_key, libtype)
+            except Exception as exc:
+                logger.warning("Could not size section %s (%s): %s", section_key, libtype, exc)
+                total = 0
 
-        async for page in plex.iter_items(section_key):
-            resolved = await _resolve_page(page, settings)
-            await _upsert_page(db, section_key, page, resolved, run_at, run_id, result)
-            result.seen += len(page)
-            if progress:
-                progress(result.seen, total, f"section {section_key}")
+            logger.info("🔎 Discovering section %s: %d %ss", section_key, total, libtype)
+            seen_here = 0
+
+            async for page in plex.iter_items(section_key, libtype):
+                resolved = await _resolve_page(page, settings)
+                await _upsert_page(db, section_key, page, resolved, run_at, run_id, result)
+                result.seen += len(page)
+                seen_here += len(page)
+                result.by_type[libtype] = result.by_type.get(libtype, 0) + len(page)
+                if progress:
+                    # Per-pass, not cumulative: `total` is this libtype's count,
+                    # so reporting the running total across every pass reads as
+                    # 22196/21385.
+                    progress(seen_here, total, f"{libtype}s in section {section_key}")
 
     # Anything in the scanned sections this run didn't stamp is gone from Plex.
     placeholders = ",".join("?" * len(sections))
@@ -219,13 +264,7 @@ async def _upsert_page(
                     item.title, existing["rating_key"], item.rating_key,
                 )
 
-        # Column order here must match both _INSERT_SQL and _UPDATE_SQL.
-        common = (
-            item.guid, item.tmdb_id, item.imdb_id, item.item_type, item.title,
-            item.sort_title, item.year, item.added_at, item.updated_at,
-            item.duration_ms, item.part_id, item.plex_path, mapped.local_path,
-            mapped.status, mapped.size, mapped.mtime, mapped.fingerprint,
-        )
+        common = _common_values(item, mapped)
 
         if existing is None:
             statements.append((

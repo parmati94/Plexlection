@@ -37,10 +37,10 @@ class PathMapping(BaseModel):
 
 
 class ScanSettings(BaseModel):
-    # Per-provider concurrency. ffprobe is IO-bound and cheap; cropdetect decodes
-    # frames and will saturate the box if you let it.
+    # Per-provider concurrency, keyed on provider id. Unknown keys are ignored
+    # and missing ones fall back to the provider's own default.
     concurrency: dict[str, int] = Field(
-        default_factory=lambda: {"plex": 1, "ffprobe": 4, "cropdetect": 2, "tmdb": 4, "tautulli": 1}
+        default_factory=lambda: {"plex": 1, "ffprobe": 4, "tmdb": 4, "tautulli": 1}
     )
     ffprobe_timeout_s: int = 60
     # Mixes a hash of the first/last 1MiB into the file fingerprint, catching

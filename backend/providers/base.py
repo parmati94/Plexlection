@@ -55,6 +55,14 @@ class ItemRow:
     plex_added_at: int | None = None
     plex_updated_at: int | None = None
     plex_duration_ms: int | None = None
+    # ── TV ────────────────────────────────────────────────────────────────
+    tvdb_id: int | None = None
+    parent_key: str | None = None      # episode -> its show's ratingKey
+    season_number: int | None = None
+    episode_number: int | None = None
+    child_count: int | None = None
+    leaf_count: int | None = None
+    viewed_leaf_count: int | None = None
     facts: dict = field(default_factory=dict)
 
 
@@ -102,6 +110,9 @@ class FactProvider(ABC):
     # that hash API ids or other facts would otherwise report 100% stale forever,
     # because their fingerprint never equals file_fp by construction.
     file_fingerprinted: ClassVar[bool] = False
+    # Item types this provider can produce facts for. Individual FactSpecs
+    # inherit it unless they declare their own applies_to.
+    default_applies_to: ClassVar[tuple[str, ...]] = ("movie",)
 
     def __init__(self, settings) -> None:
         self.settings = settings

@@ -34,6 +34,17 @@ logger = get_logger(__name__)
 BATCH = 50
 
 
+def _libtype_for(rule: dict) -> str:
+    """Plex libtype a rule's collection lives at.
+
+    A TV rule resolves to shows, so its collection is a show collection — a
+    smart collection created with libtype 'movie' in a TV section silently
+    matches nothing.
+    """
+    types = rule.get("item_types") or ["movie"]
+    return "show" if "show" in types else "movie"
+
+
 @dataclass
 class SyncDiff:
     rule_id: int
@@ -145,9 +156,10 @@ class SyncEngine:
         diff.stale = await self._stale_for(tree, scope)
 
         # ── what's in it now ──────────────────────────────────────────────
-        current = await plex.rating_keys_with_label(section_key, label)
-        pinned = await plex.rating_keys_with_label(section_key, pin_label)
-        vetoed = await plex.rating_keys_with_label(section_key, veto_label)
+        libtype = _libtype_for(rule)
+        current = await plex.rating_keys_with_label(section_key, label, libtype)
+        pinned = await plex.rating_keys_with_label(section_key, pin_label, libtype)
+        vetoed = await plex.rating_keys_with_label(section_key, veto_label, libtype)
         diff.pinned, diff.vetoed = len(pinned), len(vetoed)
 
         ours = await self._membership(rule["id"])
@@ -210,7 +222,8 @@ class SyncEngine:
         if rule.get("sync_mode", "label") == "label":
             self._progress(rule, "updating collection", total, total)
             diff.collection = await self._ensure_collection(
-                plex, section_key, rule, label, pin_label, target, pinned, diff
+                plex, section_key, rule, label, pin_label, target, pinned, diff,
+                libtype=_libtype_for(rule),
             )
 
         diff.applied = True
@@ -230,10 +243,12 @@ class SyncEngine:
 
     # ── collection upkeep ─────────────────────────────────────────────────
     async def _ensure_collection(self, plex, section_key, rule, label, pin_label,
-                                 target, pinned, diff) -> dict:
+                                 target, pinned, diff, libtype: str = "movie") -> dict:
         title = rule.get("collection_title") or rule["name"]
         try:
-            info = await plex.ensure_smart_collection(section_key, title, [label, pin_label])
+            info = await plex.ensure_smart_collection(
+                section_key, title, [label, pin_label], libtype=libtype
+            )
         except Exception as exc:
             diff.warnings.append(
                 f"Couldn't create the smart collection ({exc}). The labels were "
@@ -388,10 +403,13 @@ class SyncEngine:
             return {"removed": 0, "collection_deleted": False}
         section_key = section_keys[0]
 
+        libtype = _libtype_for(rule)
         if strip_all:
-            ours = sorted(await plex.rating_keys_with_label(section_key, label))
+            ours = sorted(await plex.rating_keys_with_label(section_key, label, libtype))
         else:
-            removed = 0
+            ours = sorted(await self._membership(rule["id"]))
+
+        removed = 0
         self._progress(rule, "removing labels", 0, len(ours))
         for start in range(0, len(ours), BATCH):
             changed, _ = await plex.apply_labels(
@@ -411,7 +429,7 @@ class SyncEngine:
         await self.db.execute("DELETE FROM sync_membership WHERE rule_id = ?", (rule["id"],))
 
         self._progress_done()
-        leftover = len(await plex.rating_keys_with_label(section_key, label))
+        leftover = len(await plex.rating_keys_with_label(section_key, label, libtype))
         return {
             "removed": removed,
             "collection_deleted": deleted,

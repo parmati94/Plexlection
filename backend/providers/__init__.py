@@ -11,6 +11,7 @@ from backend.providers.base import FactProvider
 from backend.providers.derived import DerivedProvider
 from backend.providers.ffprobe import FFprobeProvider
 from backend.providers.plex import PlexFactProvider
+from backend.providers.show_rollup import ShowRollupProvider
 from backend.providers.tautulli import TautulliProvider
 from backend.providers.tmdb import TmdbProvider
 
@@ -31,8 +32,9 @@ def build_providers(settings, db=None) -> list[FactProvider]:
         TautulliProvider(settings, client=TautulliClient(
             settings.tautulli.url, settings.tautulli.api_key
         )),
-        # Last: reads what the others produced.
+        # Last: these read what the others produced.
         DerivedProvider(settings),
+        ShowRollupProvider(settings, db=db),
     ]
 
 

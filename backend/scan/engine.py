@@ -42,7 +42,9 @@ COST_ORDER = {
 ITEM_COLUMNS = (
     "id, rating_key, library_key, item_type, title, year, tmdb_id, imdb_id, guid, "
     "plex_path, local_path, path_status, file_size, file_mtime, file_fp, "
-    "plex_added_at, plex_updated_at, plex_duration_ms, facts"
+    "plex_added_at, plex_updated_at, plex_duration_ms, "
+    "tvdb_id, parent_key, season_number, episode_number, "
+    "child_count, leaf_count, viewed_leaf_count, facts"
 )
 
 
@@ -110,8 +112,8 @@ def nest_facts(flat: dict) -> dict:
 def order_providers(providers: list) -> list:
     """Topological sort on depends_on, then by cost tier.
 
-    Dependencies are hard: cropdetect needs ffprobe's SAR and duration, and
-    derived needs whatever it reads.
+    Dependencies are hard: `derived` reads what ffprobe, plex and tmdb produce,
+    so it has to run after all of them.
     """
     by_id = {p.id: p for p in providers}
     ordered: list = []
@@ -170,10 +172,9 @@ class ScanEngine:
         is_foreign or is_box_office_bomb: it ran before TMDB was configured,
         then TMDB was recomputed on its own and nothing re-derived from it.
 
-        Only FREE and CHEAP dependents are pulled in. An EXPENSIVE one —
-        cropdetect reading ffprobe's output — must never start hours of frame
-        decoding because someone reprobed a file; it's reported as stale and
-        left for an explicit run.
+        Only FREE and CHEAP dependents are pulled in. An EXPENSIVE dependent
+        must never be started as a side effect of recomputing something it reads
+        — it's reported as stale and left for an explicit run.
         """
         selected = set(provider_ids)
         deferred: set[str] = set()
@@ -202,11 +203,21 @@ class ScanEngine:
 
     # ── planning ──────────────────────────────────────────────────────────
     async def plan(self, provider, force: bool = False) -> list[ItemRow]:
-        """Items this provider should run against."""
+        """Items this provider should run against.
+
+        Filtered by the provider's declared item types, so ffprobe never even
+        sees the 508 shows it would only skip — and doesn't record 508 skip rows
+        on every scan saying so.
+        """
         where, params = provider.selector()
+        types = provider.default_applies_to
+        type_clause = ""
+        if types:
+            type_clause = f" AND item_type IN ({','.join('?' * len(types))})"
         rows = await self.db.fetch_all(
-            f"SELECT {ITEM_COLUMNS} FROM items WHERE deleted_at IS NULL AND ({where})",
-            params,
+            f"SELECT {ITEM_COLUMNS} FROM items "
+            f"WHERE deleted_at IS NULL{type_clause} AND ({where})",
+            (*types, *params),
         )
         items = [_row_to_item(r) for r in rows]
         if not items:
@@ -420,10 +431,22 @@ class ScanEngine:
     # ── coverage ──────────────────────────────────────────────────────────
     async def coverage(self) -> dict[str, dict]:
         """Per-provider counts, for the Scan tab and the rule builder's
-        "known for N of M items" hint."""
-        total = await self.db.fetch_val(
-            "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL", default=0
+        "known for N of M items" hint.
+
+        Each provider's denominator is the items it can actually apply to, not
+        the whole catalogue. Dividing ffprobe by everything made it read
+        23,473 / 23,981 — permanently 508 short, that being the number of shows,
+        which have no file for it to probe.
+        """
+        rows_by_type = await self.db.fetch_all(
+            "SELECT item_type, COUNT(*) AS n FROM items WHERE deleted_at IS NULL "
+            "GROUP BY item_type"
         )
+        per_type = {r["item_type"]: r["n"] for r in rows_by_type}
+
+        def applicable(provider) -> int:
+            types = getattr(provider, "default_applies_to", ()) or per_type.keys()
+            return sum(per_type.get(t, 0) for t in types)
         # Staleness is only comparable in SQL for providers that fingerprint the
         # file. Everything else hashes API ids or other facts, so input_fp never
         # equals file_fp and they'd report 100% stale forever.
@@ -431,28 +454,57 @@ class ScanEngine:
             p.id for p in self.providers.values() if getattr(p, "file_fingerprinted", False)
         ]
         placeholders = ",".join("?" * len(file_fp_providers)) or "NULL"
+        # Grouped by item_type as well as provider: a single aggregate can't
+        # answer "how many of my movies are done vs my episodes", and with
+        # 21,385 episodes against 2,088 movies the big number drowns the small
+        # one entirely.
         rows = await self.db.fetch_all(
-            f"SELECT p.provider, p.status, COUNT(*) AS n, "
+            f"SELECT p.provider, i.item_type, p.status, COUNT(*) AS n, "
             f"       SUM(CASE WHEN p.provider IN ({placeholders}) "
             f"                AND p.input_fp IS NOT NULL AND i.file_fp IS NOT NULL "
             f"                AND p.input_fp != i.file_fp THEN 1 ELSE 0 END) AS stale "
             f"FROM fact_provenance p JOIN items i ON i.id = p.item_id "
-            f"WHERE i.deleted_at IS NULL GROUP BY p.provider, p.status",
+            f"WHERE i.deleted_at IS NULL GROUP BY p.provider, i.item_type, p.status",
             tuple(file_fp_providers),
         )
 
-        out: dict[str, dict] = {}
-        for provider_id in self.providers:
-            out[provider_id] = {"known": 0, "errors": 0, "skipped": 0, "stale": 0, "total": total}
+        catalogue = sum(per_type.values())
+        # Plural labels the UI can show directly, rather than each caller
+        # inventing its own.
+        labels = {"movie": "Movies", "show": "Shows", "episode": "Episodes"}
+
+        def blank(provider) -> dict:
+            types = list(getattr(provider, "default_applies_to", ()) or per_type.keys())
+            return {
+                "known": 0, "errors": 0, "skipped": 0, "stale": 0,
+                "total": applicable(provider),
+                # The whole catalogue, so the UI can say "of 23,473 applicable"
+                # rather than implying 508 items went missing.
+                "catalogue": catalogue,
+                "applies_to": types,
+                "by_type": {
+                    t: {"label": labels.get(t, t), "known": 0, "errors": 0,
+                        "skipped": 0, "stale": 0, "total": per_type.get(t, 0)}
+                    for t in types if per_type.get(t)
+                },
+            }
+
+        out = {pid: blank(p) for pid, p in self.providers.items()}
+
         for row in rows:
-            entry = out.setdefault(
-                row["provider"], {"known": 0, "errors": 0, "skipped": 0, "stale": 0, "total": total}
-            )
-            if row["status"] == STATUS_OK:
-                entry["known"] += row["n"]
-                entry["stale"] += row["stale"] or 0
-            elif row["status"] == STATUS_ERROR:
-                entry["errors"] += row["n"]
-            else:
-                entry["skipped"] += row["n"]
+            entry = out.get(row["provider"])
+            if entry is None:
+                continue  # provenance from a provider no longer installed
+            buckets = [entry]
+            t = entry["by_type"].get(row["item_type"])
+            if t is not None:
+                buckets.append(t)
+            for b in buckets:
+                if row["status"] == STATUS_OK:
+                    b["known"] += row["n"]
+                    b["stale"] += row["stale"] or 0
+                elif row["status"] == STATUS_ERROR:
+                    b["errors"] += row["n"]
+                else:
+                    b["skipped"] += row["n"]
         return out

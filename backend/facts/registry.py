@@ -28,7 +28,7 @@ class FactRegistry:
                     f"{provider.id!r}. Keys must have exactly one owner."
                 )
             # FactSpec is frozen with slots, so stamp ownership by rebuilding.
-            stamped = _restamp(spec, provider.id)
+            stamped = _restamp(spec, provider.id, provider.default_applies_to)
             self._specs[stamped.key] = stamped
             self._by_provider.setdefault(provider.id, []).append(stamped)
 
@@ -81,6 +81,7 @@ class FactRegistry:
                 "element_type": spec.element_type.value if spec.element_type else None,
                 "indexed": spec.indexed,
                 "aggregatable": spec.aggregatable,
+                "applies_to": list(spec.applies_to),
                 "example": spec.example,
                 "operators": operators_for(spec),
                 "aggregates": aggregates_for(spec),
@@ -89,14 +90,18 @@ class FactRegistry:
         return out
 
 
-def _restamp(spec: FactSpec, provider_id: str) -> FactSpec:
-    """FactSpec is frozen and uses slots, so build a new one with the owner set."""
+def _restamp(spec: FactSpec, provider_id: str, default_applies_to: tuple) -> FactSpec:
+    """FactSpec is frozen and uses slots, so build a new one with the owner set.
+
+    An empty applies_to inherits the provider's scope.
+    """
     return FactSpec(
         key=spec.key, label=spec.label, type=spec.type, description=spec.description,
         group=spec.group, unit=spec.unit, format=spec.format,
         enum_values=spec.enum_values, element_type=spec.element_type,
         indexed=spec.indexed, aggregatable=spec.aggregatable, example=spec.example,
         provider=provider_id,
+        applies_to=spec.applies_to or default_applies_to,
     )
 
 

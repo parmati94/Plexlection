@@ -72,11 +72,43 @@ async def _v4_plex_duration(db: Database) -> None:
         await db.execute("ALTER TABLE items ADD COLUMN plex_duration_ms INTEGER")
 
 
+async def _v5_tv(db: Database) -> None:
+    """Columns for TV.
+
+    Episodes carry their show's ratingKey in `parent_key` — the show, not the
+    season. Seasons aren't indexed: Plex can't put one in a collection, so a
+    third tier would cost a join for nothing.
+
+    `tvdb_id` is free from the show's guid list and is what Sonarr keys on, so
+    it's captured now rather than needing a re-scan later.
+    """
+    cols = await db.table_columns("items")
+    for name, decl in (
+        ("parent_key", "TEXT"),        # episode -> show ratingKey
+        ("season_number", "INTEGER"),
+        ("episode_number", "INTEGER"),
+        ("tvdb_id", "INTEGER"),
+        ("child_count", "INTEGER"),    # show: seasons
+        ("leaf_count", "INTEGER"),     # show: episodes Plex knows about
+        ("viewed_leaf_count", "INTEGER"),
+    ):
+        if name not in cols:
+            await db.execute(f"ALTER TABLE items ADD COLUMN {name} {decl}")
+
+    await db.executescript(
+        "CREATE INDEX IF NOT EXISTS idx_items_parent "
+        "  ON items(parent_key) WHERE deleted_at IS NULL;"
+        "CREATE INDEX IF NOT EXISTS idx_items_tvdb "
+        "  ON items(tvdb_id) WHERE tvdb_id IS NOT NULL;"
+    )
+
+
 MIGRATIONS: list[tuple[int, callable]] = [
     (1, _v1_base),
     (2, _v2_settings),
     (3, _v3_seen_run),
     (4, _v4_plex_duration),
+    (5, _v5_tv),
 ]
 
 

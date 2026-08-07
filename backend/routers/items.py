@@ -22,6 +22,7 @@ SORTS = {
 async def list_items(
     q: str = Query("", description="Title search"),
     path_status: str = Query("", description="mapped|unmapped|missing"),
+    item_type: str = Query("", description="movie|show|episode"),
     sort: str = Query("title"),
     direction: str = Query("asc"),
     limit: int = Query(100, ge=1, le=500),
@@ -38,6 +39,11 @@ async def list_items(
             raise HTTPException(status_code=400, detail=f"Unknown path_status {path_status!r}")
         where.append("path_status = ?")
         params.append(path_status)
+    if item_type:
+        if item_type not in ("movie", "show", "season", "episode"):
+            raise HTTPException(status_code=400, detail=f"Unknown item_type {item_type!r}")
+        where.append("item_type = ?")
+        params.append(item_type)
 
     order = SORTS.get(sort, SORTS["title"])
     order += " DESC" if direction.lower() == "desc" else " ASC"
@@ -48,7 +54,8 @@ async def list_items(
     )
     rows = await startup.db.fetch_all(
         f"SELECT id, rating_key, title, year, item_type, path_status, local_path, "
-        f"       plex_path, file_size, plex_added_at, facts "
+        f"       plex_path, file_size, plex_added_at, "
+        f"       parent_key, season_number, episode_number, leaf_count, facts "
         f"FROM items WHERE {clause} ORDER BY {order} LIMIT ? OFFSET ?",
         (*params, limit, offset),
     )

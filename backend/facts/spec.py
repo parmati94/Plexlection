@@ -7,9 +7,10 @@ A FactSpec is declared once by the provider that owns a key, and drives:
   * whether it can be compared against a library aggregate,
   * the help text the user reads.
 
-Key names are semantic (`video.dar`), not per-provider, so `ffprobe` and
-`cropdetect` can both write into `video.*`. The registry enforces global key
-uniqueness, which is what makes "purge everything this provider owns" safe.
+Key names are semantic (`video.dar`), not per-provider, so two providers can
+both write into `video.*` if they own different keys. The registry enforces
+global key uniqueness, which is what makes "purge everything this provider
+owns" safe.
 """
 import re
 from dataclasses import dataclass
@@ -53,6 +54,14 @@ class FactSpec:
     aggregatable: bool = False             # eligible for percentile/median predicates
     example: Any = None
     provider: str = ""                     # stamped by the registry
+    # Which item types this fact can ever be set on. Without it the rule builder
+    # offers "Aspect ratio" on a rule targeting shows — a condition that can
+    # never match, because shows have no file.
+    #
+    # Empty means "inherit from the provider", which is the usual case: a
+    # provider's facts almost always share its scope, and stating it 23 times
+    # in ffprobe would be noise.
+    applies_to: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not KEY_RE.fullmatch(self.key):
