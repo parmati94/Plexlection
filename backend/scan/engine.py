@@ -110,8 +110,8 @@ def nest_facts(flat: dict) -> dict:
 def order_providers(providers: list) -> list:
     """Topological sort on depends_on, then by cost tier.
 
-    Dependencies are hard: cropdetect needs ffprobe's SAR and duration, and
-    derived needs whatever it reads.
+    Dependencies are hard: `derived` reads what ffprobe, plex and tmdb produce,
+    so it has to run after all of them.
     """
     by_id = {p.id: p for p in providers}
     ordered: list = []
@@ -170,10 +170,9 @@ class ScanEngine:
         is_foreign or is_box_office_bomb: it ran before TMDB was configured,
         then TMDB was recomputed on its own and nothing re-derived from it.
 
-        Only FREE and CHEAP dependents are pulled in. An EXPENSIVE one —
-        cropdetect reading ffprobe's output — must never start hours of frame
-        decoding because someone reprobed a file; it's reported as stale and
-        left for an explicit run.
+        Only FREE and CHEAP dependents are pulled in. An EXPENSIVE dependent
+        must never be started as a side effect of recomputing something it reads
+        — it's reported as stale and left for an explicit run.
         """
         selected = set(provider_ids)
         deferred: set[str] = set()

@@ -7,9 +7,10 @@ A FactSpec is declared once by the provider that owns a key, and drives:
   * whether it can be compared against a library aggregate,
   * the help text the user reads.
 
-Key names are semantic (`video.dar`), not per-provider, so `ffprobe` and
-`cropdetect` can both write into `video.*`. The registry enforces global key
-uniqueness, which is what makes "purge everything this provider owns" safe.
+Key names are semantic (`video.dar`), not per-provider, so two providers can
+both write into `video.*` if they own different keys. The registry enforces
+global key uniqueness, which is what makes "purge everything this provider
+owns" safe.
 """
 import re
 from dataclasses import dataclass

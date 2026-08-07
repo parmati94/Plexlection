@@ -24,6 +24,7 @@ frontend/.vite/
 # Working notes — local only, not part of the published repo
 TODO.md
 DESIGN.md
+TV.md
 
 # Machine-specific compose override — real media paths live here, never in the
 # committed files. Run with:  docker compose -f docker-compose.local.yml up -d

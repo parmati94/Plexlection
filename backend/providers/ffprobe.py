@@ -4,11 +4,10 @@ Reads container and stream metadata straight from the file. Cheap (no decoding),
 so it runs on every scan for anything whose file fingerprint changed.
 
 What it deliberately does *not* do: detect black bars baked into the frame.
-`video.dar` here is the ratio the container declares. For a hard-matted scope
-file (a genuine 1920x800) that is the true ratio and the ultrawide use case
-works today. For a 2.39:1 film letterboxed inside a 1920x1080 frame it reports
-1.78, and only frame analysis can tell the difference — that's `video.true_dar`
-from the cropdetect provider in v2.
+`video.dar` is the ratio the container declares. For a hard-matted scope file
+(a genuine 1920x800) that is the true ratio and the ultrawide use case works.
+For a 2.39:1 film letterboxed inside a 1920x1080 frame it reports 1.78, and
+only decoding frames could tell the difference.
 """
 import asyncio
 import json
@@ -120,8 +119,9 @@ class FFprobeProvider(FactProvider):
         FactSpec("video.dar", "Aspect ratio", FactType.NUMBER,
                  "Display aspect ratio declared by the container, corrected for "
                  "non-square pixels. 2.39 = scope, 1.85 = flat, 1.78 = 16:9. "
-                 "Does NOT account for black bars encoded into the picture — for "
-                 "that see video.true_dar (cropdetect).",
+                 "Reads the container only: a scope film stored as 1920x800 is "
+                 "correct here, but one letterboxed inside a 1080p frame reports "
+                 "1.78, because the black bars are part of the picture.",
                  group="Video", unit="ratio", format="ratio",
                  indexed=True, aggregatable=True, example=2.39),
         FactSpec("video.aspect_bucket", "Aspect ratio (bucketed)", FactType.ENUM,
