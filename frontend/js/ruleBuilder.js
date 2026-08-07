@@ -443,12 +443,28 @@ export function ruleBuilderMixin() {
       this.touchRule();
     },
 
-    async suggestValues(key, q) {
+    /**
+     * Values to offer for a fact, from the last lookup of that key.
+     *
+     * Keyed by fact key rather than held as one flat list: several conditions
+     * are on screen at once, and a single shared array meant whichever input
+     * was focused last poisoned the suggestions of every other one.
+     */
+    suggestFor(key) {
+      return this.suggestions[key] ?? [];
+    },
+
+    async suggestValues(key, q = '') {
+      if (!key) return;
+      // Cache the unfiltered lookup: a datalist narrows on the client as you
+      // type, so re-querying per keystroke buys nothing until the server-side
+      // cap actually bites.
+      if (!q && this.suggestions[key]) return;
       try {
         const res = await api.facts.values(key, q);
-        this.suggestions = res.values;
+        this.suggestions = { ...this.suggestions, [key]: res.values };
       } catch {
-        this.suggestions = [];
+        this.suggestions = { ...this.suggestions, [key]: [] };
       }
     },
 

@@ -71,7 +71,7 @@ async def test_service(service: str):
             logger.warning("Plex connection test failed: %s", exc)
             return {"ok": False, "detail": str(exc)}
 
-    if service in ("tmdb", "tautulli"):
+    if service in ("tmdb", "tautulli", "radarr", "sonarr"):
         # Test through the provider's own client, so a passing test means the
         # provider will work — not merely that the host answers.
         provider = next((p for p in startup.providers if p.id == service), None)

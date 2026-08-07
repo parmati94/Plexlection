@@ -110,7 +110,8 @@ document.addEventListener('alpine:init', () => {
     previewError: null,
     previewHint: null,
     explain: null,
-    suggestions: [],
+    // fact key -> [{value, count}], filled lazily by suggestValues()
+    suggestions: {},
 
     // ── collections ─────────────────────────────────────────────────────
     collections: [],
@@ -277,9 +278,26 @@ document.addEventListener('alpine:init', () => {
       localStorage.setItem(LS.reduceMotion, String(this.reduceMotion));
     },
 
+    /**
+     * Retract the error banner.
+     *
+     * Pass the message you're retracting so a recovered subsystem can't clear
+     * an unrelated failure that's still true; pass nothing to clear whatever
+     * is showing.
+     */
+    clearError(only = null) {
+      if (!this.error) return;
+      if (only === null || this.error === only) this.error = null;
+    },
+
     async refreshHealth() {
       try {
         this.health = await api.health();
+        // A reachable backend retracts any banner a previous poll raised. The
+        // banner is otherwise write-only: nine places set it and nothing
+        // outside the login page ever cleared it, so one blip during a restart
+        // stuck a red bar above a perfectly working app.
+        this.clearError();
       } catch (e) {
         this.health = null;
         this.error = e.message;

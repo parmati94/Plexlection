@@ -329,10 +329,14 @@ def operators_for(spec: FactSpec) -> list[dict]:
         if kind == "value":
             if spec.type is FactType.ENUM:
                 kind = "enum"
-            elif spec.type is FactType.LIST:
-                kind = "suggest"
             elif spec.type is FactType.NUMBER:
                 kind = "number"
+            elif spec.type in (FactType.LIST, FactType.STRING):
+                # A datalist suggests without restricting, so it is strictly
+                # better than a bare text box even for `contains` and friends.
+                # Without it, matching a Radarr quality profile means typing
+                # "Ultra-HD" exactly, with no way to discover the spelling.
+                kind = "suggest"
             else:
                 kind = "text"
         out.append({"op": op, "label": label, "arity": arity, "value_kind": kind})

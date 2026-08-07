@@ -67,8 +67,31 @@ async def distinct_values(key: str, q: str = Query(""), limit: int = Query(50, g
         )
 
     rows = await startup.db.fetch_all(sql, (needle, limit))
-    return {
-        "key": key,
-        "values": [{"value": r["value"], "count": r["n"]} for r in rows],
-        "count": len(rows),
-    }
+    values = [{"value": r["value"], "count": r["n"]} for r in rows]
+
+    # Fold in the provider's controlled vocabulary. Observed values come first
+    # and keep their counts — what's actually in your library is the more useful
+    # suggestion — with the rest of the vocabulary listed behind them at count 0
+    # so a custom format you own but haven't matched yet is still selectable.
+    seen = {str(v["value"]).lower() for v in values}
+    for candidate in await _vocabulary(spec):
+        if len(values) >= limit:
+            break
+        if candidate.lower() in seen or (q and q.lower() not in candidate.lower()):
+            continue
+        seen.add(candidate.lower())
+        values.append({"value": candidate, "count": 0})
+
+    return {"key": key, "values": values, "count": len(values)}
+
+
+async def _vocabulary(spec) -> list[str]:
+    """Authoritative values the owning provider publishes for this key."""
+    provider = next((p for p in startup.providers if p.id == spec.provider), None)
+    if provider is None:
+        return []
+    try:
+        return (await provider.options()).get(spec.key) or []
+    except Exception as exc:
+        logger.warning("vocabulary lookup for %s failed: %s", spec.key, exc)
+        return []

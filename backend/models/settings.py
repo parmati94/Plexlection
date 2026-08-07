@@ -30,6 +30,12 @@ class TautulliSettings(BaseModel):
     api_key: str = ""
 
 
+class ArrSettings(BaseModel):
+    """Radarr or Sonarr. Both v3 APIs take the same two fields."""
+    url: str = ""
+    api_key: str = ""
+
+
 class PathMapping(BaseModel):
     """Translates a path as Plex reports it to one this container can open."""
     plex: str
@@ -40,7 +46,12 @@ class ScanSettings(BaseModel):
     # Per-provider concurrency, keyed on provider id. Unknown keys are ignored
     # and missing ones fall back to the provider's own default.
     concurrency: dict[str, int] = Field(
-        default_factory=lambda: {"plex": 1, "ffprobe": 4, "tmdb": 4, "tautulli": 1}
+        default_factory=lambda: {
+            "plex": 1, "ffprobe": 4, "tmdb": 4, "tautulli": 1,
+            # Both arr providers fetch the whole library in one sweep, so
+            # concurrency above 1 would buy nothing.
+            "radarr": 1, "sonarr": 1,
+        }
     )
     ffprobe_timeout_s: int = 60
     # Mixes a hash of the first/last 1MiB into the file fingerprint, catching
@@ -73,6 +84,8 @@ class Settings(BaseModel):
     plex: PlexSettings = Field(default_factory=PlexSettings)
     tmdb: TmdbSettings = Field(default_factory=TmdbSettings)
     tautulli: TautulliSettings = Field(default_factory=TautulliSettings)
+    radarr: ArrSettings = Field(default_factory=ArrSettings)
+    sonarr: ArrSettings = Field(default_factory=ArrSettings)
     path_mappings: list[PathMapping] = Field(default_factory=list)
     scan: ScanSettings = Field(default_factory=ScanSettings)
     safety: SafetySettings = Field(default_factory=SafetySettings)
@@ -84,6 +97,8 @@ SECRET_PATHS: frozenset[str] = frozenset({
     "plex.token",
     "tmdb.api_key",
     "tautulli.api_key",
+    "radarr.api_key",
+    "sonarr.api_key",
 })
 
 # Top-level sections, used for per-section persistence.
