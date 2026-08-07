@@ -431,10 +431,22 @@ class ScanEngine:
     # ── coverage ──────────────────────────────────────────────────────────
     async def coverage(self) -> dict[str, dict]:
         """Per-provider counts, for the Scan tab and the rule builder's
-        "known for N of M items" hint."""
-        total = await self.db.fetch_val(
-            "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL", default=0
+        "known for N of M items" hint.
+
+        Each provider's denominator is the items it can actually apply to, not
+        the whole catalogue. Dividing ffprobe by everything made it read
+        23,473 / 23,981 — permanently 508 short, that being the number of shows,
+        which have no file for it to probe.
+        """
+        rows_by_type = await self.db.fetch_all(
+            "SELECT item_type, COUNT(*) AS n FROM items WHERE deleted_at IS NULL "
+            "GROUP BY item_type"
         )
+        per_type = {r["item_type"]: r["n"] for r in rows_by_type}
+
+        def applicable(provider) -> int:
+            types = getattr(provider, "default_applies_to", ()) or per_type.keys()
+            return sum(per_type.get(t, 0) for t in types)
         # Staleness is only comparable in SQL for providers that fingerprint the
         # file. Everything else hashes API ids or other facts, so input_fp never
         # equals file_fp and they'd report 100% stale forever.
@@ -452,12 +464,22 @@ class ScanEngine:
             tuple(file_fp_providers),
         )
 
+        catalogue = sum(per_type.values())
         out: dict[str, dict] = {}
-        for provider_id in self.providers:
-            out[provider_id] = {"known": 0, "errors": 0, "skipped": 0, "stale": 0, "total": total}
+        for provider_id, provider in self.providers.items():
+            out[provider_id] = {
+                "known": 0, "errors": 0, "skipped": 0, "stale": 0,
+                "total": applicable(provider),
+                # The whole catalogue, so the UI can say "of 23,473 applicable"
+                # rather than implying 508 items went missing.
+                "catalogue": catalogue,
+                "applies_to": list(getattr(provider, "default_applies_to", ()) or ()),
+            }
         for row in rows:
             entry = out.setdefault(
-                row["provider"], {"known": 0, "errors": 0, "skipped": 0, "stale": 0, "total": total}
+                row["provider"],
+                {"known": 0, "errors": 0, "skipped": 0, "stale": 0,
+                 "total": catalogue, "catalogue": catalogue, "applies_to": []},
             )
             if row["status"] == STATUS_OK:
                 entry["known"] += row["n"]

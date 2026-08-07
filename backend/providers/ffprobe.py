@@ -243,7 +243,11 @@ class FFprobeProvider(FactProvider):
         argv = [
             config.FFPROBE_BIN,
             "-hide_banner",
-            "-v", "quiet",
+            # -v error, not -v quiet: quiet suppresses stderr entirely, so a
+            # failure reported "ffprobe exit 1: no output" and told you nothing.
+            # At this level the JSON still goes to stdout and the actual reason
+            # comes back on stderr.
+            "-v", "error",
             "-print_format", "json",
             "-show_format",
             "-show_streams",
