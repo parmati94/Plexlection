@@ -370,6 +370,11 @@ export function ruleBuilderMixin() {
       return Object.entries(groups).map(([group, facts]) => ({ group, facts }));
     },
 
+    /** Aggregatable facts for the Order-by select, unit-qualified. */
+    sortableFacts() {
+      return this.factOptionGroups().flatMap((g) => g.facts).filter((f) => f.aggregatable);
+    },
+
     // ── list-valued editors ─────────────────────────────────────────────
     listValue(node) {
       return Array.isArray(node.value) ? node.value : [];
@@ -406,8 +411,47 @@ export function ruleBuilderMixin() {
       _previewTimer = setTimeout(() => this.runPreview(), PREVIEW_DEBOUNCE_MS);
     },
 
+    /**
+     * Conditions the user hasn't filled in yet.
+     *
+     * A fresh condition has no value, which the compiler rightly rejects — but
+     * firing a request just to render "expected a number, got None" in red
+     * treats an unfinished edit as a failure. Count them here and say what's
+     * missing instead.
+     */
+    incompleteLeaves(node = this.editingRule?.rule?.root, out = []) {
+      if (!node) return out;
+      if (node.type === 'cmp') {
+        const arity = this.opArity(node);
+        const v = node.value;
+        const empty =
+          arity === 0 ? false
+          : arity === 'n' ? !Array.isArray(v) || v.length === 0
+          : arity === 2 ? !Array.isArray(v) || v.some((x) => x === '' || x === null || x === undefined)
+          : v === '' || v === null || v === undefined;
+        if (empty) out.push(node);
+      }
+      (node.children ?? []).forEach((c) => this.incompleteLeaves(c, out));
+      if (node.child) this.incompleteLeaves(node.child, out);
+      return out;
+    },
+
     async runPreview() {
       if (!this.editingRule) return;
+
+      const pending = this.incompleteLeaves();
+      if (pending.length) {
+        this.preview = null;
+        this.previewError = null;
+        this.previewHint =
+          pending.length === 1
+            ? `Set a value for ${this.specFor(pending[0].key)?.label ?? pending[0].key}.`
+            : `${pending.length} conditions still need a value.`;
+        this.previewLoading = false;
+        return;
+      }
+      this.previewHint = null;
+
       this.previewLoading = true;
       this.previewError = null;
       try {
@@ -472,7 +516,8 @@ export function ruleBuilderMixin() {
           : await api.rules.create(body);
         this.editingRule.id = res.rule.id;
         this.ruleDirty = false;
-        await this.loadRules();
+        // Collections lists rules, so it goes stale on every save.
+        await Promise.all([this.loadRules(), this.loadCollections()]);
         this.showToast('Rule saved.');
       } catch (e) {
         this.showToast(e.message, false);
@@ -490,7 +535,7 @@ export function ruleBuilderMixin() {
       try {
         await api.rules.remove(id);
         if (this.editingRule?.id === id) this.closeEditor();
-        await this.loadRules();
+        await Promise.all([this.loadRules(), this.loadCollections()]);
         this.showToast('Rule deleted.');
       } catch (e) {
         this.showToast(e.message, false);

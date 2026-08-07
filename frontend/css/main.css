@@ -121,8 +121,8 @@ html.reduce-motion *::after {
    height derives from --ar, which the markup sets per item. */
 .ar-glyph {
   --ar: 1.78;
-  width: 22px;
-  height: calc(22px / var(--ar));
+  width: 30px;
+  height: calc(30px / var(--ar));
   border: 1px solid currentColor;
   border-radius: 1px;
   flex: none;

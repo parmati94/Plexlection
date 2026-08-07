@@ -73,30 +73,32 @@
         <div class="flex flex-wrap items-center gap-1.5">
 
           <!-- Fact, grouped by namespace -->
-          <!-- x-effect re-asserts the DOM value once the options exist.
-               x-model alone sets el.value before the nested x-for has rendered
-               anything, the browser can't match it, and the select silently
-               falls back to option 0 — so an existing rule opened cold showed
-               the first fact in the list instead of its own. Assigning .value
-               fires no input event, so the model can't be clobbered by this. -->
-          <select x-model="n.node.key" @change="onFactChange(n.id)"
-                  x-effect="registry.length; $el.value = n.node.key"
+          <!-- No x-model on these selects, deliberately.
+               x-model (and any :value binding) sets el.value while the nested
+               x-for inside the select still hasn't rendered a single <option>.
+               The browser can't match a value that doesn't exist yet, so it
+               falls back to index 0 and every saved rule opened showing the
+               first fact in the registry. Re-asserting the value from x-effect
+               doesn't help: that fires at the same too-early moment.
+               Binding :selected per option removes the ordering dependency —
+               each option decides its own state as it renders. -->
+          <select @change="n.node.key = $event.target.value; onFactChange(n.id)"
                   class="max-w-[15rem] rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s focus:border-accent-500 focus:outline-none">
             <template x-for="g in factOptionGroups()" :key="g.group">
               <optgroup :label="g.group">
                 <template x-for="f in g.facts" :key="f.key">
-                  <option :value="f.key" x-text="f.optionLabel"></option>
+                  <option :value="f.key" :selected="f.key === n.node.key"
+                          x-text="f.optionLabel"></option>
                 </template>
               </optgroup>
             </template>
           </select>
 
           <!-- Operators, straight from the registry — never hardcoded -->
-          <select x-model="n.node.op" @change="onOpChange(n.id)"
-                  x-effect="operatorsFor(n.node.key).length; $el.value = n.node.op"
+          <select @change="n.node.op = $event.target.value; onOpChange(n.id)"
                   class="rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s focus:border-accent-500 focus:outline-none">
             <template x-for="o in operatorsFor(n.node.key)" :key="o.op">
-              <option :value="o.op" x-text="o.label"></option>
+              <option :value="o.op" :selected="o.op === n.node.op" x-text="o.label"></option>
             </template>
           </select>
 
@@ -128,12 +130,11 @@
           </template>
 
           <template x-if="valueKind(n.node) === 'enum' && opArity(n.node) === 1">
-            <select x-model="n.node.value" @change="touchRule()"
-                    x-effect="specFor(n.node.key); $el.value = n.node.value ?? ''"
+            <select @change="n.node.value = $event.target.value; touchRule()"
                     class="rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s focus:border-accent-500 focus:outline-none">
-              <option value="">—</option>
+              <option value="" :selected="!n.node.value">—</option>
               <template x-for="v in (specFor(n.node.key)?.enum_values ?? [])" :key="v">
-                <option :value="v" x-text="v"></option>
+                <option :value="v" :selected="v === n.node.value" x-text="v"></option>
               </template>
             </select>
           </template>
