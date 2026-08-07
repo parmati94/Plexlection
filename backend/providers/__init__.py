@@ -5,13 +5,16 @@ in `build_providers`.** Registry collection, expression indexes, the /api/facts
 wire format, the rule-builder filter options, the provider card on the Scan tab
 and the coverage statistics all follow from that one edit — no UI changes.
 """
+from backend.clients.arr_client import RADARR, SONARR, ArrClient
 from backend.clients.tautulli_client import TautulliClient
 from backend.clients.tmdb_client import TmdbClient
 from backend.providers.base import FactProvider
 from backend.providers.derived import DerivedProvider
 from backend.providers.ffprobe import FFprobeProvider
 from backend.providers.plex import PlexFactProvider
+from backend.providers.radarr import RadarrProvider
 from backend.providers.show_rollup import ShowRollupProvider
+from backend.providers.sonarr import SonarrProvider
 from backend.providers.tautulli import TautulliProvider
 from backend.providers.tmdb import TmdbProvider
 
@@ -31,6 +34,12 @@ def build_providers(settings, db=None) -> list[FactProvider]:
         )),
         TautulliProvider(settings, client=TautulliClient(
             settings.tautulli.url, settings.tautulli.api_key
+        )),
+        RadarrProvider(settings, client=ArrClient(
+            RADARR, settings.radarr.url, settings.radarr.api_key
+        )),
+        SonarrProvider(settings, client=ArrClient(
+            SONARR, settings.sonarr.url, settings.sonarr.api_key
         )),
         # Last: these read what the others produced.
         DerivedProvider(settings),

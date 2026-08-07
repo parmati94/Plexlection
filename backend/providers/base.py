@@ -147,6 +147,24 @@ class FactProvider(ABC):
         """Yield one FactResult per item, as each completes."""
         raise NotImplementedError
 
+    # ── vocabulary ────────────────────────────────────────────────────────
+    async def options(self) -> dict[str, list[str]]:
+        """Authoritative values for some of this provider's keys, if the source
+        publishes a controlled vocabulary.
+
+        The typeahead otherwise offers only what a scan has already observed,
+        which is circular for exactly the facts where it matters most: you can't
+        filter on a Trash Guides custom format until something in your library
+        already has it, and you can't discover the spelling of a quality profile
+        you've never used. Radarr and Sonarr both expose these as endpoints, so
+        the rule builder can offer the real list up front.
+
+        Best-effort by contract — a provider that can't reach its source returns
+        {} rather than raising, because a dead integration must degrade the
+        suggestions and nothing else.
+        """
+        return {}
+
     # ── introspection ─────────────────────────────────────────────────────
     @property
     def keys(self) -> tuple[str, ...]:

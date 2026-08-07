@@ -30,6 +30,11 @@ export function eventsMixin() {
       es.onopen = () => {
         this.sseConnected = true;
         _reconnectAttempts = 0;
+        // Reconnecting is the proof the banner is stale. Without this a single
+        // dropped stream — a backend restart, a phone waking from sleep — left
+        // "Lost the live connection" on screen for the rest of the session
+        // while everything behind it worked fine.
+        this.clearError('Lost the live connection. Refresh the page to reconnect.');
       };
 
       // Snapshot on connect, so a client joining mid-scan sees the current state.

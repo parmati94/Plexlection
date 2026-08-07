@@ -118,6 +118,8 @@ class SettingsStore:
             "plex": bool(s.plex.url and s.plex.token),
             "tmdb": bool(s.tmdb.api_key),
             "tautulli": bool(s.tautulli.url and s.tautulli.api_key),
+            "radarr": bool(s.radarr.url and s.radarr.api_key),
+            "sonarr": bool(s.sonarr.url and s.sonarr.api_key),
         }
 
     # ── first-run seeding ─────────────────────────────────────────────────
@@ -140,6 +142,10 @@ class SettingsStore:
         maybe("tmdb", "api_key", "TMDB_API_KEY")
         maybe("tautulli", "url", "TAUTULLI_URL")
         maybe("tautulli", "api_key", "TAUTULLI_API_KEY")
+        maybe("radarr", "url", "RADARR_URL")
+        maybe("radarr", "api_key", "RADARR_API_KEY")
+        maybe("sonarr", "url", "SONARR_URL")
+        maybe("sonarr", "api_key", "SONARR_API_KEY")
 
         # MEDIA_PATH_MAP="/data/movies:/media/videos/Movies,/data/tv:/media/videos/Shows"
         raw_map = os.getenv("MEDIA_PATH_MAP", "").strip()
