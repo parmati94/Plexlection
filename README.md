@@ -72,6 +72,7 @@ docker exec plexlection-dev python3 /app/scripts/test_scan.py 40     # 14 checks
 docker exec plexlection-dev python3 /app/scripts/test_rules.py       # 28 checks, compiler
 docker exec plexlection-dev python3 /app/scripts/test_sync.py        # 30 checks, fake Plex
 docker exec plexlection-dev python3 /app/scripts/test_providers.py   # 23 checks, TMDB/Tautulli/derived
+docker exec plexlection-dev python3 /app/scripts/test_arr.py         # 43 checks, Radarr/Sonarr
 ```
 
 **Not covered:** anything that talks to a real Plex server. The sync engine is
@@ -88,7 +89,7 @@ cp docker-compose.yml docker-compose.override.yml   # edit your media path
 docker compose up -d
 ```
 
-Open <http://localhost:5182>, then set your Plex URL and token in **Settings**.
+Open <http://localhost:5183>, then set your Plex URL and token in **Settings**.
 
 ## Development
 
@@ -105,7 +106,7 @@ reach the repo. Then use it in place of the dev file below.
 
 ```bash
 # 1. Docker + manual rebuild — simplest
-docker compose -f docker-compose.local.yml up --build    # http://localhost:5183
+docker compose -f docker-compose.local.yml up --build    # http://localhost:5184
 cd frontend && npm run build                            # after each frontend edit
 
 # 2. Docker + Vite watcher — rebuilds dist/ automatically (still no HMR;
@@ -113,16 +114,43 @@ cd frontend && npm run build                            # after each frontend ed
 cd frontend && npm run watch                            # second terminal
 
 # 3. Docker backend + Vite dev server — true HMR
-cd frontend && npm run dev                              # http://localhost:5184
+cd frontend && npm run dev                              # http://localhost:5185
 ```
 
-Mode 3 proxies `/api` to `http://localhost:5183` (the dev container's published
+Mode 3 proxies `/api` to `http://localhost:5184` (the dev container's published
 port) — **not** to `:8000`, because uvicorn binds `127.0.0.1:8000` *inside* the
 container and isn't reachable from the host. If you run uvicorn directly on the
 host instead, set `PLEXLECTION_API=http://localhost:8000`.
 
+### Ports
+
+| Port | What |
+|------|------|
+| 5183 | Production container |
+| 5184 | Dev container |
+| 5185 | Vite dev server (mode 3) |
+
+Keep the dev container off 5183. The Vite proxy and every "is it up" check point
+at the dev port on purpose — production holds the real database and can write
+labels back to Plex.
+
 Asset filenames are content-hashed, so **hard-refresh** after a rebuild — a cached
 `index.html` points at assets that no longer exist.
+
+## Deploying
+
+There is no CI yet, so production runs an image **built on the host**, not pulled
+from a registry:
+
+```bash
+./scripts/redeploy-prod.sh              # rebuild, then redeploy
+./scripts/redeploy-prod.sh --no-build   # redeploy the current image
+```
+
+The script exists because of one sharp edge: Portainer's "Update stack" re-pulls
+by default, which fails outright for an image no registry has. It resolves the
+stack by name, reuses the stored compose file, and sends `pullImage:false`. When
+CI starts publishing the image, that flag flips and the rebuild step goes away.
 
 ## Configuration
 
