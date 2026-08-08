@@ -72,7 +72,16 @@ PY
 echo "==> Waiting for health"
 for _ in $(seq 1 30); do
   status=$(docker inspect plexlection --format '{{.State.Health.Status}}' 2>/dev/null || echo starting)
-  [[ "$status" == "healthy" ]] && { curl -fsS http://localhost:5183/api/health; echo; exit 0; }
+  if [[ "$status" == "healthy" ]]; then
+    # The container's own HEALTHCHECK is what just passed, and it curls
+    # /api/health from inside. Ask Docker where the port landed rather than
+    # assuming — the published port is free to change in the Portainer stack,
+    # and hardcoding it here would report a perfectly good deploy as failed.
+    port="$(docker port plexlection 80/tcp | head -1 | sed 's/.*://')"
+    echo "    healthy on :$port"
+    curl -fsS "http://localhost:$port/api/health" && echo
+    exit 0
+  fi
   sleep 3
 done
 echo "Container did not become healthy; check: docker logs plexlection" >&2
