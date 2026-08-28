@@ -120,6 +120,12 @@ document.addEventListener('alpine:init', () => {
     diffModal: { open: false, loading: false, diff: null, ruleId: null, guarded: false, guardMessage: '' },
     syncHistory: [],
     historyFor: null,
+    // Inline "Edit details" on a collection card (presentation metadata).
+    detailsFor: null,
+    detailsDraft: {},
+
+    // New-rule springboard: name + target first, then the full editor.
+    newRuleDialog: { show: false, name: '', type: 'movie' },
 
     confirmDialog: { show: false, title: '', message: '', confirmLabel: 'Confirm', danger: true, resolve: null },
 

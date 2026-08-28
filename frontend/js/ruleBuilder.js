@@ -76,12 +76,23 @@ export function ruleBuilderMixin() {
         limit_n: null,
         enabled: true,
         sync_mode: 'label',
-        collection_title: '',
-        collection_summary: '',
-        collection_sort_title: '',
-        collection_sort: '',
       };
       this.preview = null;
+      this.runPreview();
+    },
+
+    // ── guided creation ─────────────────────────────────────────────────
+    openNewRule() {
+      this.newRuleDialog = { show: true, name: '', type: 'movie' };
+    },
+
+    createRuleFromDialog() {
+      const { name, type } = this.newRuleDialog;
+      if (!name.trim()) return;
+      this.newRule();
+      this.editingRule.name = name.trim();
+      this.editingRule.item_types = [type];
+      this.newRuleDialog.show = false;
       this.runPreview();
     },
 
@@ -102,10 +113,6 @@ export function ruleBuilderMixin() {
           limit_n: rule.limit_n,
           enabled: rule.enabled,
           sync_mode: rule.sync_mode ?? 'label',
-          collection_title: rule.collection_title ?? '',
-          collection_summary: rule.collection_summary ?? '',
-          collection_sort_title: rule.collection_sort_title ?? '',
-          collection_sort: rule.collection_sort ?? '',
         };
         this.runPreview();
       } catch (e) {
@@ -709,12 +716,8 @@ export function ruleBuilderMixin() {
         limit_n: r.limit_n || null,
         enabled: r.enabled,
         sync_mode: r.sync_mode,
-        // Empty means "follow the rule name" — sending the name here would
-        // freeze the collection title against future renames.
-        collection_title: r.collection_title || '',
-        collection_summary: r.collection_summary || '',
-        collection_sort_title: r.collection_sort_title || '',
-        collection_sort: r.collection_sort || '',
+        // No collection_* fields: presentation is edited on the Collections
+        // screen, and an absent field in RuleUpdate means "leave it alone".
       };
       try {
         const res = r.id
