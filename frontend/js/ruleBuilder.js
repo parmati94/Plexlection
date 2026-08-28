@@ -525,6 +525,16 @@ export function ruleBuilderMixin() {
       return this.suggestions[key] ?? [];
     },
 
+    /** Client-side narrowing for the custom dropdown, capped so a huge
+     *  vocabulary (every cast member in the library) stays scrollable rather
+     *  than becoming a thousand rendered rows. */
+    suggestFiltered(key, query) {
+      const q = String(query ?? '').trim().toLowerCase();
+      const all = this.suggestFor(key);
+      const hits = q ? all.filter((s) => String(s.value).toLowerCase().includes(q)) : all;
+      return hits.slice(0, 60);
+    },
+
     async suggestValues(key, q = '') {
       if (!key) return;
       // Cache the unfiltered lookup: a datalist narrows on the client as you

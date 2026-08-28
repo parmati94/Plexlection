@@ -189,20 +189,30 @@
               <!-- Same suggestions for the multi-value editor. This is where
                    "includes any of [custom formats]" is built, so guessing the
                    exact spelling of a Trash Guides format was the difference
-                   between the rule working and silently matching nothing. -->
+                   between the rule working and silently matching nothing.
+                   A styled dropdown rather than a <datalist>: the native popup
+                   is unstylable and, with a large vocabulary, fills the whole
+                   screen. Stays open after a pick — adding several is the
+                   normal flow here. -->
               <template x-if="!specFor(n.node.key)?.enum_values">
-                <div class="relative">
-                  <input type="text" placeholder="+ add…"
-                         :list="`suggest-multi-${n.id}`"
-                         @focus="suggestValues(n.node.key)"
-                         @keydown.enter.prevent="addListValue(n.id, $event.target.value); $event.target.value = ''"
+                <div class="relative" x-data="{ open: false, q: '' }" @click.outside="open = false">
+                  <input type="text" placeholder="+ add…" x-ref="addInput"
+                         @focus="suggestValues(n.node.key); open = true"
+                         @input="q = $event.target.value; open = true"
+                         @keydown.escape="open = false"
+                         @keydown.enter.prevent="addListValue(n.id, $event.target.value); $event.target.value = ''; q = ''"
                          class="w-28 rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s placeholder-ink-faint focus:border-accent-500 focus:outline-none" />
-                  <datalist :id="`suggest-multi-${n.id}`">
-                    <template x-for="s in suggestFor(n.node.key)" :key="s.value">
-                      <option :value="s.value"
-                              x-text="s.count ? `${s.count} in library` : 'not in library yet'"></option>
+                  <div x-show="open && suggestFiltered(n.node.key, q).length" style="display: none;"
+                       class="absolute left-0 top-full z-30 mt-1 max-h-56 w-64 overflow-y-auto rounded-lg border border-line-strong bg-surface py-1 shadow-2xl">
+                    <template x-for="s in suggestFiltered(n.node.key, q)" :key="s.value">
+                      <button @click="addListValue(n.id, s.value); $refs.addInput.value = ''; q = ''"
+                              class="flex w-full items-baseline justify-between gap-3 px-2.5 py-1 text-left text-body-s text-ink hover:bg-raised">
+                        <span class="truncate" x-text="s.value"></span>
+                        <span class="shrink-0 text-micro text-ink-faint"
+                              x-text="s.count ? s.count : 'new'"></span>
+                      </button>
                     </template>
-                  </datalist>
+                  </div>
                 </div>
               </template>
             </div>
@@ -232,22 +242,27 @@
           </template>
 
           <!-- Suggest: typeahead over values present in the library, plus any
-               controlled vocabulary the owning provider publishes. The
-               <datalist> has to be rendered here — :list only names one, it
-               does not create it, so without this the input was a plain text
-               box with a dead reference. -->
+               controlled vocabulary the owning provider publishes. A styled
+               dropdown rather than a <datalist> — the native popup is
+               unstylable and, with a large vocabulary, fills the screen. -->
           <template x-if="valueKind(n.node) === 'suggest' && opArity(n.node) === 1">
-            <div class="relative">
-              <input type="text" x-model="n.node.value" @input="touchRule()"
-                     :list="`suggest-${n.id}`" placeholder="value"
-                     @focus="suggestValues(n.node.key)"
+            <div class="relative" x-data="{ open: false }" @click.outside="open = false">
+              <input type="text" x-model="n.node.value" placeholder="value"
+                     @focus="suggestValues(n.node.key); open = true"
+                     @input="open = true; touchRule()"
+                     @keydown.escape="open = false"
                      class="w-40 rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s placeholder-ink-faint focus:border-accent-500 focus:outline-none" />
-              <datalist :id="`suggest-${n.id}`">
-                <template x-for="s in suggestFor(n.node.key)" :key="s.value">
-                  <option :value="s.value"
-                          x-text="s.count ? `${s.count} in library` : 'not in library yet'"></option>
+              <div x-show="open && suggestFiltered(n.node.key, n.node.value).length" style="display: none;"
+                   class="absolute left-0 top-full z-30 mt-1 max-h-56 w-64 overflow-y-auto rounded-lg border border-line-strong bg-surface py-1 shadow-2xl">
+                <template x-for="s in suggestFiltered(n.node.key, n.node.value)" :key="s.value">
+                  <button @click="n.node.value = s.value; open = false; touchRule()"
+                          class="flex w-full items-baseline justify-between gap-3 px-2.5 py-1 text-left text-body-s text-ink hover:bg-raised">
+                    <span class="truncate" x-text="s.value"></span>
+                    <span class="shrink-0 text-micro text-ink-faint"
+                          x-text="s.count ? s.count : 'new'"></span>
+                  </button>
                 </template>
-              </datalist>
+              </div>
             </div>
           </template>
 
