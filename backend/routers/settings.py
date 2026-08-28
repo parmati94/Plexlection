@@ -55,11 +55,12 @@ async def put_settings(patch: dict[str, Any]):
 
 
 @router.post("/test/{service}", dependencies=[Depends(require_auth)])
-async def test_service(service: str):
+async def test_service(service: str, instance: str | None = None):
     """Probe a service with the currently-saved credentials.
 
     Always 200 with {ok: bool} — a failed connection test is a normal answer to
-    the question, not an HTTP error.
+    the question, not an HTTP error. Radarr and Sonarr take an optional
+    ?instance= name; without one, every configured instance is probed.
     """
     if service == "plex":
         try:
@@ -75,17 +76,35 @@ async def test_service(service: str):
         # Test through the provider's own client, so a passing test means the
         # provider will work — not merely that the host answers.
         provider = next((p for p in startup.providers if p.id == service), None)
-        if provider is None or provider.client is None:
+        if provider is None:
             return {"ok": False, "detail": f"{service} provider is not available."}
         if not provider.is_configured():
             return {"ok": False, "detail": provider.not_configured_reason()}
-        try:
-            return await provider.client.test()
-        except NotConfiguredError as exc:
-            return {"ok": False, "detail": str(exc)}
-        except Exception as exc:
-            logger.warning("%s connection test failed: %s", service, exc)
-            return {"ok": False, "detail": str(exc)}
+
+        if service in ("radarr", "sonarr"):
+            clients = [c for c in provider.clients if c.url and c.api_key]
+            if instance is not None:
+                clients = [c for c in clients if c.name == instance]
+                if not clients:
+                    return {"ok": False, "detail": f"No configured instance named {instance!r}."}
+        else:
+            clients = [provider.client] if provider.client else []
+
+        results = []
+        for client in clients:
+            label = getattr(client, "name", service)
+            try:
+                results.append((label, await client.test()))
+            except Exception as exc:
+                logger.warning("%s %r connection test failed: %s", service, label, exc)
+                results.append((label, {"ok": False, "detail": str(exc)}))
+
+        if len(results) == 1:
+            return results[0][1]
+        return {
+            "ok": all(r["ok"] for _, r in results),
+            "detail": "; ".join(f"{label}: {r['detail']}" for label, r in results),
+        }
 
     raise HTTPException(status_code=404, detail=f"Unknown service {service!r}")
 

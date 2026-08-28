@@ -42,14 +42,36 @@ export function settingsMixin() {
       if (ok) await this.testConnection(service);
     },
 
-    async testConnection(service) {
-      this.connTest = { ...this.connTest, [service]: { busy: true } };
+    async testConnection(service, instance) {
+      const key = instance ? `${service}:${instance}` : service;
+      this.connTest = { ...this.connTest, [key]: { busy: true } };
       try {
-        const res = await api.settings.test(service);
-        this.connTest = { ...this.connTest, [service]: res };
+        const res = await api.settings.test(service, instance);
+        this.connTest = { ...this.connTest, [key]: res };
         if (res.ok && service === 'plex') await this.loadPlexSections();
       } catch (e) {
-        this.connTest = { ...this.connTest, [service]: { ok: false, detail: e.message } };
+        this.connTest = { ...this.connTest, [key]: { ok: false, detail: e.message } };
+      }
+    },
+
+    // ── Radarr / Sonarr instances ───────────────────────────────────────
+    addArrInstance(service) {
+      const list = this.settings[service] || [];
+      // Sensible default names: "main" first, then blank for the user to fill.
+      const name = list.length === 0 ? 'main' : '';
+      this.settings[service] = [...list, { name, url: '', api_key: '' }];
+    },
+
+    removeArrInstance(service, index) {
+      this.settings[service] = this.settings[service].filter((_, i) => i !== index);
+    },
+
+    async saveArrInstances(service) {
+      const list = this.settings[service] || [];
+      const ok = await this.saveSettings({ [service]: list });
+      if (!ok) return;
+      for (const inst of this.settings[service]) {
+        if (inst.url && inst.api_key) await this.testConnection(service, inst.name);
       }
     },
 

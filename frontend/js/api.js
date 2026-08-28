@@ -54,7 +54,11 @@ export const api = {
     // Partial patches are deep-merged server-side; secrets sent back as the
     // mask mean "unchanged".
     update: (patch) => apiFetch('/api/settings', { method: 'PUT', body: patch }),
-    test: (service) => apiFetch(`/api/settings/test/${service}`, { method: 'POST' }),
+    test: (service, instance) =>
+      apiFetch(
+        `/api/settings/test/${service}${instance ? `?instance=${encodeURIComponent(instance)}` : ''}`,
+        { method: 'POST' },
+      ),
     plexSections: () => apiFetch('/api/settings/plex/sections'),
     schedule: () => apiFetch('/api/settings/schedule'),
   },

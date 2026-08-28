@@ -38,11 +38,19 @@ from backend.providers.base import (
 logger = get_logger(__name__)
 
 
+# When several instances track one series, list facts are unioned; everything
+# else (statistics included) comes from the primary — the first configured
+# instance that manages the show. Series-level facts have no file to match on,
+# so instance order is the tiebreak, unlike Radarr's basename+size match.
+_MERGE_UNION = ("sonarr.tags", "sonarr.genres", "sonarr.release_groups")
+
+
 class SonarrProvider(FactProvider):
     id = "sonarr"
     label = "Sonarr"
     cost = CostTier.NETWORK
-    schema_version = 1
+    # v2: multi-instance support; list facts became cross-instance unions.
+    schema_version = 2
     depends_on = ()
     batch_size = 0
     max_age_s = 6 * 3600
@@ -139,14 +147,25 @@ class SonarrProvider(FactProvider):
                  "Air date of the most recent episode. Combined with 'continuing' "
                  "this finds shows that have quietly stopped.",
                  group="Sonarr", format="date", aggregatable=True),
+        FactSpec("sonarr.instance", "Sonarr instance", FactType.STRING,
+                 "The instance this series' facts come from — the first "
+                 "configured Sonarr that manages it.",
+                 group="Sonarr", indexed=True, example="main"),
+        FactSpec("sonarr.instances", "Sonarr instances", FactType.LIST,
+                 "Every configured instance tracking this series.",
+                 group="Sonarr", element_type=FactType.STRING,
+                 example=["main", "4k"]),
     )
 
-    def __init__(self, settings, client=None):
+    def __init__(self, settings, clients: list | None = None):
         super().__init__(settings)
-        self.client = client
+        self.clients = clients or []
+
+    def _configured_clients(self) -> list:
+        return [c for c in self.clients if c.url and c.api_key]
 
     def is_configured(self) -> bool:
-        return bool(self.settings.sonarr.url and self.settings.sonarr.api_key)
+        return bool(self._configured_clients())
 
     def not_configured_reason(self) -> str:
         return "no Sonarr URL or API key"
@@ -160,34 +179,45 @@ class SonarrProvider(FactProvider):
         return None  # episode counts drift as things air; age is the only signal
 
     async def options(self) -> dict[str, list[str]]:
-        if not self.is_configured():
+        merged: dict[str, set[str]] = {
+            "sonarr.quality_profile": set(), "sonarr.tags": set(),
+            "sonarr.root_folder": set(),
+        }
+        names = [c.name for c in self._configured_clients()]
+        for client in self._configured_clients():
+            try:
+                merged["sonarr.quality_profile"] |= set((await client.quality_profiles()).values())
+                merged["sonarr.tags"] |= set((await client.tags()).values())
+                merged["sonarr.root_folder"] |= set(await client.root_folders())
+            except Exception as exc:
+                logger.warning("Sonarr %r vocabulary unavailable: %s", client.name, exc)
+        if not any(merged.values()):
             return {}
-        try:
-            return {
-                "sonarr.quality_profile": sorted((await self.client.quality_profiles()).values()),
-                "sonarr.tags": sorted((await self.client.tags()).values()),
-                "sonarr.root_folder": await self.client.root_folders(),
-            }
-        except Exception as exc:
-            logger.warning("Sonarr vocabulary unavailable: %s", exc)
-            return {}
+        out = {key: sorted(values) for key, values in merged.items()}
+        out["sonarr.instance"] = names
+        out["sonarr.instances"] = names
+        return out
 
     async def enrich(self, items: list[ItemRow], ctx: EnrichContext) -> AsyncIterator[FactResult]:
         if not items:
             return
 
-        if ctx.progress:
-            ctx.progress("fetching Sonarr series")
         started = time.perf_counter()
-        try:
-            by_tvdb = await self.client.by_external_id()
-            profiles = await self.client.quality_profiles()
-            tags = await self.client.tags()
-        except Exception as exc:
-            logger.error("Sonarr fetch failed: %s", exc)
-            for item in items:
-                yield FactResult(item.id, STATUS_ERROR, reason=f"{type(exc).__name__}: {exc}")
-            return
+        # One sweep per instance; any failure fails the batch, mirroring the
+        # Radarr provider's reasoning about half-merged facts.
+        sweeps: list[tuple[str, dict, dict, dict]] = []
+        for client in self._configured_clients():
+            if ctx.progress:
+                ctx.progress(f"fetching Sonarr series ({client.name})")
+            try:
+                sweeps.append((client.name, await client.by_external_id(),
+                               await client.quality_profiles(), await client.tags()))
+            except Exception as exc:
+                logger.error("Sonarr %r fetch failed: %s", client.name, exc)
+                for item in items:
+                    yield FactResult(item.id, STATUS_ERROR,
+                                     reason=f"{client.name}: {type(exc).__name__}: {exc}")
+                return
 
         elapsed = int((time.perf_counter() - started) * 1000)
         per_item = max(1, elapsed // max(1, len(items)))
@@ -203,15 +233,26 @@ class SonarrProvider(FactProvider):
                                  reason="no TVDB id — can't match to Sonarr")
                 continue
 
-            entry = by_tvdb.get(item.tvdb_id)
-            if entry is None:
+            candidates = [
+                (name, entry, profiles, tags)
+                for name, by_tvdb, profiles, tags in sweeps
+                if (entry := by_tvdb.get(item.tvdb_id))
+            ]
+            if not candidates:
                 yield FactResult(item.id, STATUS_OK,
                                  facts={"sonarr.managed": False}, duration_ms=per_item)
                 continue
 
-            yield FactResult(item.id, STATUS_OK,
-                             facts=self._extract(entry, profiles, tags),
-                             duration_ms=per_item)
+            name, entry, profiles, tags = candidates[0]
+            facts = self._extract(entry, profiles, tags)
+            facts["sonarr.instance"] = name
+            facts["sonarr.instances"] = [c[0] for c in candidates]
+            for other_name, other_entry, other_profiles, other_tags in candidates[1:]:
+                other = self._extract(other_entry, other_profiles, other_tags)
+                for key in _MERGE_UNION:
+                    facts[key] = sorted(set(facts.get(key) or []) | set(other.get(key) or []))
+
+            yield FactResult(item.id, STATUS_OK, facts=facts, duration_ms=per_item)
 
     def _extract(self, entry: dict, profiles: dict[int, str],
                  tags: dict[int, str]) -> dict[str, Any]:
