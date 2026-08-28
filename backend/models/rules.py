@@ -22,9 +22,13 @@ class RuleBase(BaseModel):
     limit_n: int | None = Field(default=None, ge=1, le=10000)
     enabled: bool = True
     sync_mode: Literal["label", "static", "none"] = "label"
+    # Empty/None means "follow the rule name" — persisting the name here would
+    # freeze the collection's title against later renames.
     collection_title: str | None = None
     collection_sort_title: str | None = None
     collection_summary: str | None = None
+    # "" = leave Plex's default ordering alone.
+    collection_sort: Literal["", "release", "alpha", "custom"] | None = None
 
 
 class RuleCreate(RuleBase):
@@ -48,6 +52,7 @@ class RuleUpdate(BaseModel):
     collection_title: str | None = None
     collection_sort_title: str | None = None
     collection_summary: str | None = None
+    collection_sort: Literal["", "release", "alpha", "custom"] | None = None
 
 
 class RulePreview(BaseModel):

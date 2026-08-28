@@ -103,12 +103,32 @@ async def _v5_tv(db: Database) -> None:
     )
 
 
+async def _v6_collection_identity(db: Database) -> None:
+    """Track which Plex collection a rule owns, and unfreeze its title.
+
+    The builder used to persist the rule's name into collection_title on first
+    save, so renaming the rule silently stopped renaming the collection. Any
+    stored title equal to the name is that accident rather than a choice —
+    clear those so the title follows the name again.
+
+    The rating key is what lets sync rename the existing collection instead of
+    creating a sibling under the new title and stranding the old one. It's
+    NULL here and adopted (by title lookup) on each rule's next sync.
+    """
+    if "collection_rating_key" not in await db.table_columns("rules"):
+        await db.execute("ALTER TABLE rules ADD COLUMN collection_rating_key TEXT")
+    await db.execute(
+        "UPDATE rules SET collection_title = NULL WHERE collection_title = name"
+    )
+
+
 MIGRATIONS: list[tuple[int, callable]] = [
     (1, _v1_base),
     (2, _v2_settings),
     (3, _v3_seen_run),
     (4, _v4_plex_duration),
     (5, _v5_tv),
+    (6, _v6_collection_identity),
 ]
 
 
