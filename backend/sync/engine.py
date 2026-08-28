@@ -112,6 +112,48 @@ class SyncEngine:
         if self.broadcaster:
             self.broadcaster.set_state("sync", None)
 
+    # ── section targeting ─────────────────────────────────────────────────
+    async def _collection_section(
+        self, rule: dict, section_keys: list[str], libtype: str
+    ) -> str:
+        """The one library this rule's collection lives in.
+
+        Plex collections belong to exactly one library section — there is no
+        cross-library collection — so a rule renders into a single library even
+        though its scope may name several. This picks the one that actually
+        holds what the rule collects.
+
+        Getting it wrong is silent: Plex will happily create a `show` collection
+        inside a movie library, and it then matches nothing forever, with no
+        error to explain the empty collection. So a rule whose libraries hold
+        none of its item types is refused here instead.
+
+        Section types come from our own item rows rather than from Plex, so this
+        costs no round-trip and works while Plex is unreachable.
+        """
+        rows = await self.db.fetch_all(
+            "SELECT DISTINCT library_key, item_type FROM items "
+            "WHERE deleted_at IS NULL AND item_type IN ('movie','show')"
+        )
+        holds: dict[str, set[str]] = {}
+        for row in rows:
+            holds.setdefault(str(row["library_key"]), set()).add(row["item_type"])
+
+        for key in section_keys:
+            if libtype in holds.get(str(key), set()):
+                return str(key)
+
+        if len(section_keys) == 1 and not holds.get(str(section_keys[0])):
+            # Never scanned, so the item rows can't say what it holds. One
+            # library is unambiguous anyway — let it through.
+            return str(section_keys[0])
+
+        raise SyncGuardError(
+            f"None of this rule's libraries hold {libtype}s, so its collection "
+            f"would be created empty and stay that way. Check the rule's "
+            f"libraries, or run a scan if they've never been indexed."
+        )
+
     # ── labels ────────────────────────────────────────────────────────────
     def labels_for(self, slug: str) -> tuple[str, str, str]:
         prefix = self.settings_store.get().plex.label_prefix or "plexlection"
@@ -129,7 +171,9 @@ class SyncEngine:
         section_keys = rule["library_keys"] or settings.plex.libraries
         if not section_keys:
             raise SyncGuardError("This rule isn't scoped to any Plex library.")
-        section_key = section_keys[0]
+
+        libtype = _libtype_for(rule)
+        section_key = await self._collection_section(rule, list(section_keys), libtype)
 
         diff = SyncDiff(rule_id=rule["id"], rule_name=rule["name"], label=label,
                         dry_run=dry_run)
@@ -156,7 +200,6 @@ class SyncEngine:
         diff.stale = await self._stale_for(tree, scope)
 
         # ── what's in it now ──────────────────────────────────────────────
-        libtype = _libtype_for(rule)
         current = await plex.rating_keys_with_label(section_key, label, libtype)
         pinned = await plex.rating_keys_with_label(section_key, pin_label, libtype)
         vetoed = await plex.rating_keys_with_label(section_key, veto_label, libtype)
@@ -413,9 +456,15 @@ class SyncEngine:
         section_keys = rule["library_keys"] or self.settings_store.get().plex.libraries
         if not section_keys:
             return {"removed": 0, "collection_deleted": False}
-        section_key = section_keys[0]
 
         libtype = _libtype_for(rule)
+        try:
+            section_key = await self._collection_section(rule, list(section_keys), libtype)
+        except SyncGuardError:
+            # Teardown is the escape hatch — it must not be the thing that
+            # refuses. If we can't tell which library this rule rendered into,
+            # fall back to the one the old single-section code would have used.
+            section_key = str(section_keys[0])
         if strip_all:
             ours = sorted(await plex.rating_keys_with_label(section_key, label, libtype))
         else:
