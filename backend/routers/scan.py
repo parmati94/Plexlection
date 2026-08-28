@@ -148,6 +148,14 @@ async def _run_job(request: ScanRequest, trigger: str) -> None:
                 )
                 if result.unmapped:
                     summary.append(f"{result.unmapped} unmapped")
+                if result.incomplete:
+                    # Loud, because the run otherwise looks clean: everything was
+                    # upserted, nothing errored, and the only visible symptom is
+                    # that deletions silently didn't happen.
+                    summary.append(
+                        f"⚠ section(s) {', '.join(result.incomplete)} read short — "
+                        f"removals skipped, re-run to reconcile"
+                    )
 
             # ── providers ──────────────────────────────────────────────
             outcome = None

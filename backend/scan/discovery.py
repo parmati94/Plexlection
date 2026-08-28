@@ -44,6 +44,9 @@ class DiscoveryResult:
     unmapped: int = 0
     missing: int = 0
     by_type: dict = field(default_factory=dict)
+    # Sections that returned fewer items than Plex says they hold. Their soft
+    # delete is skipped — see _sweep_deleted.
+    incomplete: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -58,6 +61,7 @@ class DiscoveryResult:
             "mapped": self.mapped,
             "unmapped": self.unmapped,
             "missing": self.missing,
+            "incomplete": self.incomplete,
         }
 
 
@@ -177,20 +181,38 @@ async def run_discovery(
                     # 22196/21385.
                     progress(seen_here, total, f"{libtype}s in section {section_key}")
 
-    # Anything in the scanned sections this run didn't stamp is gone from Plex.
-    placeholders = ",".join("?" * len(sections))
-    stale_clause = (
-        f"deleted_at IS NULL AND (seen_run IS NULL OR seen_run != ?) "
-        f"AND library_key IN ({placeholders})"
-    )
-    result.removed = await db.fetch_val(
-        f"SELECT COUNT(*) FROM items WHERE {stale_clause}", (run_id, *sections), default=0
-    )
-    if result.removed:
-        await db.execute(
-            f"UPDATE items SET deleted_at = ? WHERE {stale_clause}",
-            (run_at, run_id, *sections),
+            # A pass that came up short read less than Plex holds, and the soft
+            # delete below would attribute the gap to items being gone. Plex's
+            # own count already reflects real deletions — a user who removed 500
+            # episodes gets total=19911 and we see 19911 — so a shortfall means
+            # we failed to read, not that anything vanished. Truncated response,
+            # a mid-pass error, a listing shape we didn't parse.
+            if total and seen_here < total:
+                logger.error(
+                    "🛑 Section %s returned %d of %d %ss — skipping its soft "
+                    "delete so a short read can't empty the catalogue",
+                    section_key, seen_here, total, libtype,
+                )
+                if section_key not in result.incomplete:
+                    result.incomplete.append(section_key)
+
+    # Anything in the scanned sections this run didn't stamp is gone from Plex —
+    # but only where we actually saw the whole section.
+    swept = [s for s in sections if s not in result.incomplete]
+    if swept:
+        placeholders = ",".join("?" * len(swept))
+        stale_clause = (
+            f"deleted_at IS NULL AND (seen_run IS NULL OR seen_run != ?) "
+            f"AND library_key IN ({placeholders})"
         )
+        result.removed = await db.fetch_val(
+            f"SELECT COUNT(*) FROM items WHERE {stale_clause}", (run_id, *swept), default=0
+        )
+        if result.removed:
+            await db.execute(
+                f"UPDATE items SET deleted_at = ? WHERE {stale_clause}",
+                (run_at, run_id, *swept),
+            )
 
     counts = await db.fetch_all(
         "SELECT path_status, COUNT(*) AS n FROM items "
@@ -206,9 +228,10 @@ async def run_discovery(
 
     logger.info(
         "✅ Discovery: %d seen, +%d new, %d updated, %d rotated, %d removed "
-        "(%d mapped / %d unmapped / %d missing)",
+        "(%d mapped / %d unmapped / %d missing)%s",
         result.seen, result.added, result.updated, result.rotated, result.removed,
         result.mapped, result.unmapped, result.missing,
+        f" — sections {', '.join(result.incomplete)} read short" if result.incomplete else "",
     )
     return result
 
