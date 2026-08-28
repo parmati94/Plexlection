@@ -140,17 +140,10 @@ Asset filenames are content-hashed, so **hard-refresh** after a rebuild — a ca
 ## Deploying
 
 There is no CI yet, so production runs an image **built on the host**, not pulled
-from a registry:
-
-```bash
-./scripts/redeploy-prod.sh              # rebuild, then redeploy
-./scripts/redeploy-prod.sh --no-build   # redeploy the current image
-```
-
-The script exists because of one sharp edge: Portainer's "Update stack" re-pulls
-by default, which fails outright for an image no registry has. It resolves the
-stack by name, reuses the stored compose file, and sends `pullImage:false`. When
-CI starts publishing the image, that flag flips and the rebuild step goes away.
+from a registry. One sharp edge if you deploy through Portainer: "Update stack"
+re-pulls by default, which fails outright for an image no registry has — update
+the stack with *re-pull image* off (the API calls it `pullImage:false`). When CI
+starts publishing the image, that concern goes away.
 
 ## Configuration
 

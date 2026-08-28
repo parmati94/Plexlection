@@ -30,6 +30,10 @@ TV.md
 # committed files. Run with:  docker compose -f docker-compose.local.yml up -d
 docker-compose.local.yml
 
+# Machine-specific deploy tooling — hardwired to one host's Portainer and
+# filesystem layout, useless to anyone else cloning this repo
+scripts/redeploy-prod.sh
+
 # Editors / OS
 .vscode/
 .idea/
