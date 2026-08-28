@@ -10,7 +10,9 @@ services:
         - FFMPEG_SOURCE=static
     container_name: plexlection-dev
     ports:
-      - "5183:80"
+      # 5183 belongs to the production container; dev sits beside it on 5184 so
+      # both can run at once.
+      - "5184:80"
     volumes:
       - ./data:/app/data
       # ⚠️ REPLACE with your media root, mounted READ-ONLY at the SAME path

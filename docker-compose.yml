@@ -4,7 +4,7 @@ services:
     image: parmati/plexlection:latest
     container_name: plexlection
     ports:
-      - "5182:80"
+      - "5183:80"
     volumes:
       # Instance data: SQLite database, collection posters, config.yaml.
       - ./data:/app/data
