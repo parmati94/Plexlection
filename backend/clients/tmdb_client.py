@@ -118,12 +118,17 @@ class TmdbClient:
         raise RuntimeError("TMDB rate limit did not clear after retries")
 
     async def movie(self, tmdb_id: int) -> dict:
-        """Full movie record with keywords, cached."""
-        key = f"movie:{tmdb_id}:{self.language}"
+        """Full movie record with keywords and credits, cached.
+
+        The cache key carries a version because the append_to_response list is
+        part of the payload's shape: bumping the append list without bumping
+        the key would serve credit-less cached payloads for another 30 days.
+        """
+        key = f"movie:{tmdb_id}:{self.language}:v2"
         cached = await self._cached(key)
         if cached is not None:
             return cached
-        data = await self._get(f"/movie/{tmdb_id}", append_to_response="keywords")
+        data = await self._get(f"/movie/{tmdb_id}", append_to_response="keywords,credits")
         if data:
             await self._store(key, data)
         return data

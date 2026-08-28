@@ -34,7 +34,8 @@ class TmdbProvider(FactProvider):
     id = "tmdb"
     label = "TMDB"
     cost = CostTier.NETWORK
-    schema_version = 1
+    # v2: people and company facts from the credits append.
+    schema_version = 2
     depends_on = ()
     batch_size = 1
     # Metadata drifts slowly; the client also caches responses for 30 days.
@@ -91,6 +92,29 @@ class TmdbProvider(FactProvider):
                  "TMDB's adult flag.", group="External", example=False),
         FactSpec("tmdb.tagline", "Tagline", FactType.STRING,
                  "Marketing tagline.", group="External"),
+        FactSpec("tmdb.production_companies", "Production companies", FactType.LIST,
+                 "Every company with a production credit. Single-valued studio "
+                 "fields flatten co-productions — Everything Everywhere All at "
+                 "Once has five companies and Radarr picked IAC Films, so an "
+                 "'A24' equality never saw it. Note this is production, not "
+                 "distribution: a film A24 only distributed still won't carry "
+                 "it here.",
+                 group="External", element_type=FactType.STRING,
+                 example=["A24", "AGBO"]),
+        FactSpec("tmdb.directors", "Directors", FactType.LIST,
+                 "Director credits. A list because co-directed films are "
+                 "common — the Daniels, the Coens, the Wachowskis.",
+                 group="External", element_type=FactType.STRING,
+                 example=["Denis Villeneuve"]),
+        FactSpec("tmdb.cast", "Cast", FactType.LIST,
+                 "Top-billed cast, capped at the first 15 — enough for anyone "
+                 "the collection would be named after.",
+                 group="External", element_type=FactType.STRING,
+                 example=["Nicolas Cage"]),
+        FactSpec("tmdb.writers", "Writers", FactType.LIST,
+                 "Writing-department credits: screenplay, story, source novel.",
+                 group="External", element_type=FactType.STRING,
+                 example=["Charlie Kaufman"]),
     )
 
     def __init__(self, settings, client=None):
@@ -193,5 +217,20 @@ class TmdbProvider(FactProvider):
         facts["tmdb.adult"] = bool(data.get("adult"))
         if data.get("tagline"):
             facts["tmdb.tagline"] = data["tagline"]
+
+        facts["tmdb.production_companies"] = [
+            c["name"] for c in (data.get("production_companies") or []) if c.get("name")
+        ]
+
+        credits = data.get("credits") or {}
+        billed = sorted(credits.get("cast") or [], key=lambda c: c.get("order", 999))
+        facts["tmdb.cast"] = [c["name"] for c in billed[:15] if c.get("name")]
+        crew = credits.get("crew") or []
+        facts["tmdb.directors"] = sorted({
+            c["name"] for c in crew if c.get("job") == "Director" and c.get("name")
+        })
+        facts["tmdb.writers"] = sorted({
+            c["name"] for c in crew if c.get("department") == "Writing" and c.get("name")
+        })
 
         return facts
