@@ -39,25 +39,42 @@
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
     <template x-for="c in collections" :key="c.id">
       <div class="rounded-xl border border-line bg-surface p-5">
-        <div class="flex items-start justify-between gap-2">
-          <div class="min-w-0">
-            <h3 class="truncate font-display text-body font-semibold text-ink"
-                x-text="c.collection_title || c.name"></h3>
-            <p class="truncate font-mono text-micro text-ink-faint" x-text="c.labels.main"></p>
+        <div class="flex gap-4">
+          <!-- Poster: the uploaded one, else Plex's own composite for the
+               collection. The icon sits behind the image, so a 404 (never
+               synced, no art) degrades to a quiet placeholder. -->
+          <div class="relative w-[4.5rem] shrink-0 self-start overflow-hidden rounded-lg border border-line bg-raised"
+               style="aspect-ratio: 2 / 3">
+            <svg class="absolute inset-0 m-auto h-5 w-5 text-ink-faint"><use href="#i-image"/></svg>
+            <img :src="`/api/collections/${c.id}/poster?v=${c.poster_fp || c.last_sync_at || 0}`"
+                 loading="lazy" alt=""
+                 class="relative h-full w-full object-cover"
+                 @error="$event.target.style.display = 'none'"
+                 @load="$event.target.style.display = ''" />
           </div>
-          <span class="rounded-full px-2 py-0.5 text-micro"
-                :class="c.enabled ? 'bg-ok-900/40 text-ok-400' : 'bg-raised text-ink-muted'"
-                x-text="c.enabled ? 'enabled' : 'off'"></span>
-        </div>
 
-        <dl class="mt-3 grid grid-cols-2 gap-y-1 text-body-s">
-          <dt class="text-ink-muted">Synced items</dt>
-          <dd class="tabular text-right text-ink" x-text="c.synced_count ?? 0"></dd>
-          <dt class="text-ink-muted">Last match</dt>
-          <dd class="tabular text-right text-ink" x-text="c.last_match_count ?? '—'"></dd>
-          <dt class="text-ink-muted">Last sync</dt>
-          <dd class="text-right text-ink-muted" x-text="formatDate(c.last_sync_at)"></dd>
-        </dl>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <h3 class="truncate font-display text-body font-semibold text-ink"
+                    x-text="c.collection_title || c.name"></h3>
+                <p class="truncate font-mono text-micro text-ink-faint" x-text="c.labels.main"></p>
+              </div>
+              <span class="rounded-full px-2 py-0.5 text-micro"
+                    :class="c.enabled ? 'bg-ok-900/40 text-ok-400' : 'bg-raised text-ink-muted'"
+                    x-text="c.enabled ? 'enabled' : 'off'"></span>
+            </div>
+
+            <dl class="mt-3 grid grid-cols-2 gap-y-1 text-body-s">
+              <dt class="text-ink-muted">Synced items</dt>
+              <dd class="tabular text-right text-ink" x-text="c.synced_count ?? 0"></dd>
+              <dt class="text-ink-muted">Last match</dt>
+              <dd class="tabular text-right text-ink" x-text="c.last_match_count ?? '—'"></dd>
+              <dt class="text-ink-muted">Last sync</dt>
+              <dd class="text-right text-ink-muted" x-text="formatDate(c.last_sync_at)"></dd>
+            </dl>
+          </div>
+        </div>
 
         <!-- Progress for this card. A thousand-item unsync is twenty sequential
              Plex round-trips; without this the app looks hung. -->
