@@ -309,8 +309,10 @@ document.addEventListener('alpine:init', () => {
       window.location.replace('/login.html');
     },
 
+    /** ok: true (green), false (red), or 'warn' (amber) for "succeeded, but
+     *  know this" — leftovers, skips, refusals. Red is reserved for failures. */
     showToast(message, ok = true) {
-      this.toast = { message, ok };
+      this.toast = { message, ok: ok === true, warn: ok === 'warn' };
     },
 
     // Promise-based confirm, rendered once in footer.html.

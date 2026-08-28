@@ -412,7 +412,7 @@ export function ruleBuilderMixin() {
       if (dropped) {
         this.showToast(
           `Removed ${dropped} condition${dropped === 1 ? '' : 's'} that don't apply to ${type}s.`,
-          false,
+          'warn',
         );
       }
       this.touchRule();
