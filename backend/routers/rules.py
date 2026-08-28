@@ -212,7 +212,10 @@ async def create_rule(request: RuleCreate):
          # the rule name forever, a persisted one freezes against renames.
          request.sync_mode, request.collection_title or None,
          request.collection_sort_title, request.collection_summary,
-         request.collection_sort, now, now),
+         # The column is NOT NULL DEFAULT 'release'; an explicit None here
+         # overrides the default and violates the constraint.
+         request.collection_sort if request.collection_sort is not None else "release",
+         now, now),
     )
     logger.info("Created rule %d (%s)", rule_id, slug)
     return await get_rule(rule_id)
