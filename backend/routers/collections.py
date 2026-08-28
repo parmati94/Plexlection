@@ -2,8 +2,10 @@
 import hashlib
 import json
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse, Response
 
 from backend import startup
 from backend.common.auth import require_auth
@@ -129,6 +131,29 @@ async def collection_history(rule_id: int, limit: int = 20):
     return {"history": history, "count": len(history)}
 
 
+@router.get("/{rule_id}/poster", dependencies=[Depends(require_auth)])
+async def get_poster(rule_id: int):
+    """The card image: the uploaded poster when one exists, else Plex's own
+    art for the collection — Plex composites one automatically, so every
+    synced collection has something to show."""
+    rule = await _get_rule(rule_id)
+
+    ref = rule.get("poster_ref")
+    if ref and Path(ref).exists():
+        media = "image/jpeg" if ref.endswith(".jpg") else "image/png"
+        # The frontend cache-busts on poster_fp, so long caching is safe.
+        return FileResponse(ref, media_type=media,
+                            headers={"Cache-Control": "private, max-age=86400"})
+
+    if rule.get("collection_rating_key"):
+        data = await startup.get_plex().collection_poster(rule["collection_rating_key"])
+        if data:
+            return Response(content=data, media_type="image/jpeg",
+                            headers={"Cache-Control": "private, max-age=3600"})
+
+    raise HTTPException(status_code=404, detail="No poster available.")
+
+
 @router.post("/{rule_id}/poster", dependencies=[Depends(require_auth)])
 async def upload_poster(rule_id: int, file: UploadFile = File(...)):
     """Store a poster for the collection.
@@ -159,7 +184,6 @@ async def upload_poster(rule_id: int, file: UploadFile = File(...)):
 async def remove_poster(rule_id: int):
     rule = await _get_rule(rule_id)
     if rule.get("poster_ref"):
-        from pathlib import Path
         Path(rule["poster_ref"]).unlink(missing_ok=True)
     await startup.db.execute(
         "UPDATE rules SET poster_ref = NULL, poster_fp = NULL WHERE id = ?", (rule_id,)

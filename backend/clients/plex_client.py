@@ -461,6 +461,39 @@ class PlexClient:
 
         return await asyncio.to_thread(_run)
 
+    async def collection_poster(self, rating_key: str,
+                                width: int = 240, height: int = 360) -> bytes | None:
+        """The collection's poster, transcoded to card size.
+
+        Plex composites art automatically for collections with no custom
+        poster, so this answers for any collection that exists. None (not an
+        error) when it doesn't — the card just shows its placeholder.
+        """
+        self._require()
+
+        def _run() -> bytes | None:
+            server = self._connect_sync()
+            try:
+                item = server.fetchItem(int(rating_key))
+            except Exception:
+                return None
+            thumb = getattr(item, "thumb", None)
+            if not thumb:
+                return None
+            try:
+                url = server.transcodeImage(thumb, height=height, width=width)
+            except Exception:
+                url = server.url(thumb, includeToken=True)
+            try:
+                response = server._session.get(url, timeout=15)
+                response.raise_for_status()
+                return response.content
+            except Exception as exc:
+                logger.debug("Poster fetch failed for %s: %s", rating_key, exc)
+                return None
+
+        return await asyncio.to_thread(_run)
+
     async def delete_collection(self, section_key: str, title: str,
                                 rating_key: str | None = None) -> bool:
         self._require()
