@@ -94,6 +94,44 @@
           </div>
         </div>
 
+        <!-- Your curation. The counters above already report how many pins and
+             vetoes exist; without the titles that's write-only — you can see
+             that four exist and have no way to find out which four short of
+             hunting for labels in Plex. -->
+        <template x-if="diffModal.diff.pinned_items?.length || diffModal.diff.vetoed_items?.length">
+          <div class="mt-4">
+            <p class="mb-1 text-body-s font-medium text-ink">Your curation</p>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <template x-for="g in [
+                  {items: diffModal.diff.pinned_items, l: 'Pinned in',
+                   help: 'Held in regardless of the rule.', tone: 'text-accent-400'},
+                  {items: diffModal.diff.vetoed_items, l: 'Vetoed out',
+                   help: 'Held out even when the rule matches.', tone: 'text-warn-400'}]"
+                  :key="g.l">
+                <div x-show="g.items?.length" style="display: none;">
+                  <p class="mb-1 text-body-s font-medium" :class="g.tone">
+                    <span x-text="g.l"></span>
+                    <span class="tabular" x-text="g.items?.length ?? 0"></span>
+                  </p>
+                  <div class="app-scroll max-h-40 overflow-y-auto rounded-lg border border-line bg-sunken">
+                    <template x-for="i in g.items" :key="i.rating_key">
+                      <p class="border-b border-line/60 px-3 py-1 text-body-s text-ink">
+                        <span x-text="i.title ?? i.rating_key"></span>
+                        <span class="text-ink-faint" x-text="i.year ?? ''"></span>
+                      </p>
+                    </template>
+                  </div>
+                  <p class="mt-1 text-micro text-ink-faint" x-text="g.help"></p>
+                </div>
+              </template>
+            </div>
+            <p class="mt-1.5 text-micro text-ink-faint">
+              These come from labels you applied in Plex. Sync never writes or
+              removes them — remove the label there to undo one.
+            </p>
+          </div>
+        </template>
+
         <p x-show="diffModal.diff.drifted" style="display: none;"
            class="mt-3 text-body-s text-ink-muted">
           <span class="tabular" x-text="diffModal.diff.drifted"></span>

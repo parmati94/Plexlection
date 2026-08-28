@@ -56,6 +56,11 @@ class SyncDiff:
     kept: int = 0
     pinned: int = 0
     vetoed: int = 0
+    # The user's curation, resolved to titles. Counts alone make pins and vetoes
+    # write-only: you can see that four exist but not which four, and the only
+    # way to find out is to go label-hunting in Plex.
+    pinned_items: list[dict] = field(default_factory=list)
+    vetoed_items: list[dict] = field(default_factory=list)
     drifted: int = 0
     stale: int = 0
     in_scope: int = 0
@@ -74,6 +79,7 @@ class SyncDiff:
             "matched": self.matched, "add": self.add, "remove": self.remove,
             "add_count": len(self.add), "remove_count": len(self.remove),
             "kept": self.kept, "pinned": self.pinned, "vetoed": self.vetoed,
+            "pinned_items": self.pinned_items, "vetoed_items": self.vetoed_items,
             "drifted": self.drifted, "stale": self.stale, "in_scope": self.in_scope,
             "warnings": self.warnings, "dry_run": self.dry_run,
             "applied": self.applied, "collection": self.collection,
@@ -112,6 +118,48 @@ class SyncEngine:
         if self.broadcaster:
             self.broadcaster.set_state("sync", None)
 
+    # ── section targeting ─────────────────────────────────────────────────
+    async def _collection_section(
+        self, rule: dict, section_keys: list[str], libtype: str
+    ) -> str:
+        """The one library this rule's collection lives in.
+
+        Plex collections belong to exactly one library section — there is no
+        cross-library collection — so a rule renders into a single library even
+        though its scope may name several. This picks the one that actually
+        holds what the rule collects.
+
+        Getting it wrong is silent: Plex will happily create a `show` collection
+        inside a movie library, and it then matches nothing forever, with no
+        error to explain the empty collection. So a rule whose libraries hold
+        none of its item types is refused here instead.
+
+        Section types come from our own item rows rather than from Plex, so this
+        costs no round-trip and works while Plex is unreachable.
+        """
+        rows = await self.db.fetch_all(
+            "SELECT DISTINCT library_key, item_type FROM items "
+            "WHERE deleted_at IS NULL AND item_type IN ('movie','show')"
+        )
+        holds: dict[str, set[str]] = {}
+        for row in rows:
+            holds.setdefault(str(row["library_key"]), set()).add(row["item_type"])
+
+        for key in section_keys:
+            if libtype in holds.get(str(key), set()):
+                return str(key)
+
+        if len(section_keys) == 1 and not holds.get(str(section_keys[0])):
+            # Never scanned, so the item rows can't say what it holds. One
+            # library is unambiguous anyway — let it through.
+            return str(section_keys[0])
+
+        raise SyncGuardError(
+            f"None of this rule's libraries hold {libtype}s, so its collection "
+            f"would be created empty and stay that way. Check the rule's "
+            f"libraries, or run a scan if they've never been indexed."
+        )
+
     # ── labels ────────────────────────────────────────────────────────────
     def labels_for(self, slug: str) -> tuple[str, str, str]:
         prefix = self.settings_store.get().plex.label_prefix or "plexlection"
@@ -129,7 +177,9 @@ class SyncEngine:
         section_keys = rule["library_keys"] or settings.plex.libraries
         if not section_keys:
             raise SyncGuardError("This rule isn't scoped to any Plex library.")
-        section_key = section_keys[0]
+
+        libtype = _libtype_for(rule)
+        section_key = await self._collection_section(rule, list(section_keys), libtype)
 
         diff = SyncDiff(rule_id=rule["id"], rule_name=rule["name"], label=label,
                         dry_run=dry_run)
@@ -156,7 +206,6 @@ class SyncEngine:
         diff.stale = await self._stale_for(tree, scope)
 
         # ── what's in it now ──────────────────────────────────────────────
-        libtype = _libtype_for(rule)
         current = await plex.rating_keys_with_label(section_key, label, libtype)
         pinned = await plex.rating_keys_with_label(section_key, pin_label, libtype)
         vetoed = await plex.rating_keys_with_label(section_key, veto_label, libtype)
@@ -176,9 +225,22 @@ class SyncEngine:
         to_remove = (current & ours) - target
         diff.kept = len(target & current)
 
-        titles = await self._titles(to_add | to_remove)
+        titles = await self._titles(to_add | to_remove | pinned | vetoed)
         diff.add = [{"rating_key": k, **titles.get(k, {})} for k in sorted(to_add)]
         diff.remove = [{"rating_key": k, **titles.get(k, {})} for k in sorted(to_remove)]
+
+        # A pin or veto can name something we've never indexed — a hand-applied
+        # label on an item outside this rule's libraries, say. Fall back to the
+        # rating key so it's still visible and still removable, rather than
+        # silently dropping out of the list.
+        def _curated(keys: set[str]) -> list[dict]:
+            return [
+                {"rating_key": k, **(titles.get(k) or {"title": f"Item {k}", "year": None})}
+                for k in sorted(keys, key=lambda k: (titles.get(k, {}).get("title") or "", k))
+            ]
+
+        diff.pinned_items = _curated(pinned)
+        diff.vetoed_items = _curated(vetoed)
 
         self._guard(diff, current, settings, force)
 
@@ -393,8 +455,18 @@ class SyncEngine:
              diff.matched, len(diff.add), len(diff.remove), diff.kept,
              diff.pinned, diff.vetoed, diff.drifted,
              "ok" if diff.applied or diff.dry_run else "error", None,
-             json.dumps({"add": diff.add[:200], "remove": diff.remove[:200],
-                         "warnings": diff.warnings})),
+             json.dumps({
+                 "add": diff.add[:200], "remove": diff.remove[:200],
+                 "warnings": diff.warnings,
+                 # Plex's own count, read back after the write. Worth storing
+                 # rather than deriving from matched − vetoed + pinned, because
+                 # a pin on something the rule already matches would make that
+                 # arithmetic overcount, and it's the number the user sees in
+                 # Plex that the Collections tab needs to agree with.
+                 "collection_size": (diff.collection or {}).get("size"),
+                 "pinned_items": diff.pinned_items,
+                 "vetoed_items": diff.vetoed_items,
+             })),
         )
 
     # ── teardown ──────────────────────────────────────────────────────────
@@ -413,9 +485,15 @@ class SyncEngine:
         section_keys = rule["library_keys"] or self.settings_store.get().plex.libraries
         if not section_keys:
             return {"removed": 0, "collection_deleted": False}
-        section_key = section_keys[0]
 
         libtype = _libtype_for(rule)
+        try:
+            section_key = await self._collection_section(rule, list(section_keys), libtype)
+        except SyncGuardError:
+            # Teardown is the escape hatch — it must not be the thing that
+            # refuses. If we can't tell which library this rule rendered into,
+            # fall back to the one the old single-section code would have used.
+            section_key = str(section_keys[0])
         if strip_all:
             ours = sorted(await plex.rating_keys_with_label(section_key, label, libtype))
         else:

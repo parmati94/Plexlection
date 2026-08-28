@@ -65,14 +65,71 @@
                     x-text="c.enabled ? 'enabled' : 'off'"></span>
             </div>
 
+            <!-- Two different true numbers live here: what the rule matched,
+                 and what Plex actually shows. They diverge as soon as you pin
+                 or veto anything, so lead with the Plex number and account for
+                 the gap — but only spell it out when there IS a gap. -->
             <dl class="mt-3 grid grid-cols-2 gap-y-1 text-body-s">
+              <template x-if="curated(c)">
+                <dt class="font-medium text-ink">In Plex</dt>
+              </template>
+              <template x-if="curated(c)">
+                <dd class="tabular text-right font-medium text-ink"
+                    x-text="c.collection_size ?? '—'"></dd>
+              </template>
+
+              <dt class="text-ink-muted" :class="curated(c) && 'pl-3'">Rule match</dt>
+              <dd class="tabular text-right text-ink"
+                  x-text="c.last_match_count ?? '—'"></dd>
+
+              <template x-if="c.pinned_count">
+                <dt class="pl-3 text-ink-muted">Your pins</dt>
+              </template>
+              <template x-if="c.pinned_count">
+                <dd class="tabular text-right text-ok-400"
+                    x-text="`+${c.pinned_count}`"></dd>
+              </template>
+
+              <template x-if="c.vetoed_count">
+                <dt class="pl-3 text-ink-muted">Your vetoes</dt>
+              </template>
+              <template x-if="c.vetoed_count">
+                <dd class="tabular text-right text-warn-400"
+                    x-text="`−${c.vetoed_count}`"></dd>
+              </template>
+
               <dt class="text-ink-muted">Synced items</dt>
               <dd class="tabular text-right text-ink" x-text="c.synced_count ?? 0"></dd>
-              <dt class="text-ink-muted">Last match</dt>
-              <dd class="tabular text-right text-ink" x-text="c.last_match_count ?? '—'"></dd>
               <dt class="text-ink-muted">Last sync</dt>
               <dd class="text-right text-ink-muted" x-text="formatDate(c.last_sync_at)"></dd>
             </dl>
+
+            <!-- The three-label protocol is the answer to "smart collections
+                 can't be hand-curated", and it was previously undiscoverable:
+                 the card named the main label and never mentioned the two the
+                 user is meant to apply themselves. -->
+            <details class="mt-2 group">
+              <summary class="cursor-pointer list-none text-micro text-ink-faint hover:text-ink-muted">
+                <span class="group-open:hidden">Curate by hand…</span>
+                <span class="hidden group-open:inline">Apply these labels in Plex:</span>
+              </summary>
+              <div class="mt-1.5 space-y-1">
+                <div class="flex items-baseline gap-2">
+                  <code class="select-all font-mono text-micro text-ok-400"
+                        x-text="c.labels.pin"></code>
+                  <span class="text-micro text-ink-faint">force in</span>
+                </div>
+                <div class="flex items-baseline gap-2">
+                  <code class="select-all font-mono text-micro text-warn-400"
+                        x-text="c.labels.veto"></code>
+                  <span class="text-micro text-ink-faint">force out</span>
+                </div>
+                <p class="text-micro text-ink-faint">
+                  Yours — sync reads them and never writes or removes them.
+                  Re-sync to apply.
+                </p>
+              </div>
+            </details>
           </div>
         </div>
 

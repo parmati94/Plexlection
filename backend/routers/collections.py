@@ -28,11 +28,30 @@ async def _get_rule(rule_id: int) -> dict:
 
 @router.get("", dependencies=[Depends(require_auth)])
 async def list_collections():
-    """Every rule with its sync state, for the Collections tab."""
+    """Every rule with its sync state, for the Collections tab.
+
+    Deliberately touches only SQLite. Pin and veto counts are live in Plex, but
+    reading them here would cost three Plex round-trips per rule and leave the
+    whole tab broken whenever the server is down — for numbers that are already
+    recorded on every sync. Taking them from the last applied run also keeps
+    them exactly as fresh as `last_match_count` and `last_sync_at` beside them,
+    rather than mixing live and snapshot values in one list.
+    """
+    def from_last_sync(expr: str, alias: str) -> str:
+        return (
+            f"(SELECT {expr} FROM sync_history h "
+            f" WHERE h.rule_id = r.id AND h.dry_run = 0 "
+            f" ORDER BY h.started_at DESC, h.id DESC LIMIT 1) AS {alias}"
+        )
+
     rows = await startup.db.fetch_all(
-        "SELECT r.*, "
-        "  (SELECT COUNT(*) FROM sync_membership m WHERE m.rule_id = r.id) AS synced_count "
-        "FROM rules r ORDER BY r.name COLLATE NOCASE"
+        "SELECT r.*,"
+        " (SELECT COUNT(*) FROM sync_membership m WHERE m.rule_id = r.id) AS synced_count,"
+        + from_last_sync("h.pinned_count", "pinned_count") + ","
+        + from_last_sync("h.vetoed_count", "vetoed_count") + ","
+        + from_last_sync("json_extract(h.detail_json, '$.collection_size')",
+                         "collection_size")
+        + " FROM rules r ORDER BY r.name COLLATE NOCASE"
     )
     out = []
     for row in rows:

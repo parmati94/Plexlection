@@ -313,6 +313,40 @@ async def main():
     check("failure surfaced as a warning",
           any("smart collection" in w for w in diff.warnings), True)
 
+    # A collection lives in exactly one Plex library, and a `show` collection
+    # created inside a movie library matches nothing — silently, forever. The
+    # old code picked library_keys[0] and the libtype independently, so nothing
+    # stopped that pairing. It has to be refused, not merely survived.
+    print("\n11. Library / item-type mismatch")
+    plex.fail_smart = False
+    tv = await persist_rule(db, make_rule(rule_id=4, slug="tv", name="TV",
+                                          item_types=["show"],
+                                          collection_title="TV"))
+    try:
+        await engine.sync_rule(tv, dry_run=True)
+        check("refuses a show rule pointed at a movie library", "allowed", "refused")
+    except SyncGuardError as exc:
+        check("refuses a show rule pointed at a movie library",
+              "hold shows" in str(exc), True)
+
+    # Teardown must never be the thing that refuses — it's the escape hatch for
+    # a rule that's already in a bad state.
+    result = await engine.unsync_rule(tv)
+    check("unsync still runs on a mismatched rule", result["collection_deleted"] is not None, True)
+
+    # Same rule, pointed at a library that does hold shows: allowed through.
+    await db.execute(
+        "INSERT INTO items (library_key, rating_key, item_type, title, sort_title,"
+        " year, seen_run, facts, first_seen, last_seen, path_status)"
+        " VALUES ('2','s1','show','Show','Show',2020,1,'{}',0,0,'mapped')"
+    )
+    tv2 = await persist_rule(db, make_rule(rule_id=5, slug="tv2", name="TV2",
+                                           library_keys=["1", "2"],
+                                           item_types=["show"],
+                                           collection_title="TV2"))
+    diff = await engine.sync_rule(tv2, dry_run=True, force=True)
+    check("picks the library that holds shows", diff.matched, 0)
+
     await db.stop()
     await db2.stop()
     print(f"\n{'ALL PASS' if not failures else f'{failures} FAILURE(S)'}")
