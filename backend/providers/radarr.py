@@ -20,7 +20,21 @@ Radarr state drifts on its own schedule. An upgrade changes the file (which
 would show up in file_fp), but changing a quality profile or editing custom
 format scores changes the answer with no file change at all, so age is the only
 honest freshness signal.
+
+## Multiple instances
+
+More than one Radarr (a main library plus a remux library, say) can track the
+same movie, and a merged Plex item can hold both files. Joining on tmdb_id
+alone would then describe whichever instance answered — possibly a file Plex
+isn't even serving. So the primary instance for an item is chosen by matching
+file basename + size against the item's catalogued file (basename sidesteps
+every path-mapping disagreement between the apps), falling back to instance
+order. File-level facts merge across instances as any/union/best: `remux` is
+"any copy is a remux", `custom_format_score` is the best copy's score. Identity
+and movie-level facts (release_group, quality_profile, monitored…) come from
+the primary alone.
 """
+import os.path
 import time
 from typing import Any, AsyncIterator
 
@@ -40,11 +54,20 @@ from backend.providers.base import (
 logger = get_logger(__name__)
 
 
+# How facts combine when several instances track one movie. Everything not
+# listed here is taken from the primary (file-matched) instance alone.
+_MERGE_ANY = ("radarr.remux", "radarr.cutoff_unmet", "radarr.proper_repack")
+_MERGE_UNION = ("radarr.custom_formats", "radarr.tags")
+_MERGE_MAX = ("radarr.custom_format_score", "radarr.resolution", "radarr.size_on_disk")
+
+
 class RadarrProvider(FactProvider):
     id = "radarr"
     label = "Radarr"
     cost = CostTier.NETWORK
-    schema_version = 1
+    # v2: multi-instance merge — remux/score/formats now mean "any/best copy",
+    # not "whatever the one instance said".
+    schema_version = 2
     depends_on = ()
     batch_size = 0          # whole library in one sweep
     max_age_s = 6 * 3600
@@ -133,14 +156,26 @@ class RadarrProvider(FactProvider):
         FactSpec("radarr.certification", "Certification", FactType.STRING,
                  "Age rating from Radarr's metadata source.",
                  group="Radarr", indexed=True, example="PG-13"),
+        FactSpec("radarr.instance", "Radarr instance", FactType.STRING,
+                 "The instance whose file backs this Plex item — with several "
+                 "Radarrs, the one that actually owns the copy Plex serves.",
+                 group="Radarr", indexed=True, example="remuxes"),
+        FactSpec("radarr.instances", "Radarr instances", FactType.LIST,
+                 "Every configured instance tracking this movie. 'main' without "
+                 "'remuxes' is a movie you haven't remuxed yet.",
+                 group="Radarr", element_type=FactType.STRING,
+                 example=["main", "remuxes"]),
     )
 
-    def __init__(self, settings, client=None):
+    def __init__(self, settings, clients: list | None = None):
         super().__init__(settings)
-        self.client = client
+        self.clients = clients or []
+
+    def _configured_clients(self) -> list:
+        return [c for c in self.clients if c.url and c.api_key]
 
     def is_configured(self) -> bool:
-        return bool(self.settings.radarr.url and self.settings.radarr.api_key)
+        return bool(self._configured_clients())
 
     def not_configured_reason(self) -> str:
         return "no Radarr URL or API key"
@@ -157,53 +192,71 @@ class RadarrProvider(FactProvider):
 
     async def options(self) -> dict[str, list[str]]:
         """Authoritative vocabulary, so the rule builder offers real profiles and
-        custom formats before anything has been scanned."""
-        if not self.is_configured():
+        custom formats before anything has been scanned. Union across instances."""
+        merged: dict[str, set[str]] = {
+            "radarr.quality_profile": set(), "radarr.custom_formats": set(),
+            "radarr.tags": set(), "radarr.root_folder": set(),
+        }
+        names = [c.name for c in self._configured_clients()]
+        for client in self._configured_clients():
+            try:
+                merged["radarr.quality_profile"] |= set((await client.quality_profiles()).values())
+                merged["radarr.custom_formats"] |= set(await client.custom_format_names())
+                merged["radarr.tags"] |= set((await client.tags()).values())
+                merged["radarr.root_folder"] |= set(await client.root_folders())
+            except Exception as exc:
+                logger.warning("Radarr %r vocabulary unavailable: %s", client.name, exc)
+        if not any(merged.values()):
             return {}
-        try:
-            return {
-                "radarr.quality_profile": sorted((await self.client.quality_profiles()).values()),
-                "radarr.custom_formats": await self.client.custom_format_names(),
-                "radarr.tags": sorted((await self.client.tags()).values()),
-                "radarr.root_folder": await self.client.root_folders(),
-            }
-        except Exception as exc:
-            logger.warning("Radarr vocabulary unavailable: %s", exc)
-            return {}
+        out = {key: sorted(values) for key, values in merged.items()}
+        out["radarr.instance"] = names
+        out["radarr.instances"] = names
+        return out
 
     async def enrich(self, items: list[ItemRow], ctx: EnrichContext) -> AsyncIterator[FactResult]:
         if not items:
             return
 
-        if ctx.progress:
-            ctx.progress("fetching Radarr library")
         started = time.perf_counter()
-        try:
-            by_tmdb = await self.client.by_external_id()
-            profiles = await self.client.quality_profiles()
-            tags = await self.client.tags()
-        except Exception as exc:
-            logger.error("Radarr fetch failed: %s", exc)
-            for item in items:
-                yield FactResult(item.id, STATUS_ERROR, reason=f"{type(exc).__name__}: {exc}")
-            return
+        # One sweep per instance. Any instance failing fails the batch: a merge
+        # over half the instances would store confidently wrong facts (remux
+        # False because only the non-remux Radarr answered) and cache them for
+        # max_age_s.
+        sweeps: list[tuple[str, dict, dict, dict, dict]] = []
+        for client in self._configured_clients():
+            if ctx.progress:
+                ctx.progress(f"fetching Radarr library ({client.name})")
+            try:
+                by_tmdb = await client.by_external_id()
+                profiles = await client.quality_profiles()
+                tags = await client.tags()
+            except Exception as exc:
+                logger.error("Radarr %r fetch failed: %s", client.name, exc)
+                for item in items:
+                    yield FactResult(item.id, STATUS_ERROR,
+                                     reason=f"{client.name}: {type(exc).__name__}: {exc}")
+                return
 
-        # Second sweep for custom formats, restricted to the files we actually
-        # care about rather than the whole of Radarr.
-        wanted_files = [
-            entry["movieFileId"]
-            for item in items
-            if item.tmdb_id and (entry := by_tmdb.get(item.tmdb_id)) and entry.get("movieFileId")
-        ]
-        if ctx.progress:
-            ctx.progress(f"fetching custom formats for {len(wanted_files)} files")
-        try:
-            files = await self.client.moviefiles(wanted_files)
-        except Exception as exc:
-            # Custom formats are the richest facts here but not the only ones;
-            # losing them shouldn't cost you quality profiles and cutoff flags.
-            logger.warning("Radarr custom formats unavailable: %s", exc)
-            files = {}
+            # Second sweep for custom formats, restricted to the files we
+            # actually care about rather than the whole of Radarr.
+            wanted_files = [
+                entry["movieFileId"]
+                for item in items
+                if item.tmdb_id and (entry := by_tmdb.get(item.tmdb_id))
+                and entry.get("movieFileId")
+            ]
+            if ctx.progress:
+                ctx.progress(f"fetching custom formats for {len(wanted_files)} "
+                             f"files ({client.name})")
+            try:
+                files = await client.moviefiles(wanted_files)
+            except Exception as exc:
+                # Custom formats are the richest facts here but not the only
+                # ones; losing them shouldn't cost profiles and cutoff flags.
+                logger.warning("Radarr %r custom formats unavailable: %s",
+                               client.name, exc)
+                files = {}
+            sweeps.append((client.name, by_tmdb, profiles, tags, files))
 
         elapsed = int((time.perf_counter() - started) * 1000)
         per_item = max(1, elapsed // max(1, len(items)))
@@ -219,16 +272,72 @@ class RadarrProvider(FactProvider):
                                  reason="no TMDB id — can't match to Radarr")
                 continue
 
-            entry = by_tmdb.get(item.tmdb_id)
-            if entry is None:
+            candidates = [
+                (name, entry, files)
+                for name, by_tmdb, _, _, files in sweeps
+                if (entry := by_tmdb.get(item.tmdb_id))
+            ]
+            if not candidates:
                 # Absence is a fact: these are the manual imports Radarr never
                 # picked up, and they're worth being able to collect.
                 yield FactResult(item.id, STATUS_OK,
                                  facts={"radarr.managed": False}, duration_ms=per_item)
                 continue
 
-            facts = self._extract(entry, files, profiles, tags)
+            facts = self._merge(item, candidates, sweeps)
             yield FactResult(item.id, STATUS_OK, facts=facts, duration_ms=per_item)
+
+    # ── multi-instance merge ──────────────────────────────────────────────
+    def _merge(self, item: ItemRow,
+               candidates: list[tuple[str, dict, dict]],
+               sweeps: list[tuple[str, dict, dict, dict, dict]]) -> dict[str, Any]:
+        vocab = {name: (profiles, tags) for name, _, profiles, tags, _ in sweeps}
+
+        primary = next(
+            (c for c in candidates if self._file_matches(item, self._file_detail(*c[1:]))),
+            candidates[0],
+        )
+        name, entry, files = primary
+        profiles, tags = vocab[name]
+        facts = self._extract(entry, files, profiles, tags)
+        facts["radarr.instance"] = name
+        facts["radarr.instances"] = [c[0] for c in candidates]
+
+        for other_name, other_entry, other_files in candidates:
+            if other_name == name:
+                continue
+            profiles, tags = vocab[other_name]
+            other = self._extract(other_entry, other_files, profiles, tags)
+            for key in _MERGE_ANY:
+                facts[key] = bool(facts.get(key)) or bool(other.get(key))
+            for key in _MERGE_UNION:
+                facts[key] = sorted(set(facts.get(key) or []) | set(other.get(key) or []))
+            for key in _MERGE_MAX:
+                values = [v for v in (facts.get(key), other.get(key)) if v is not None]
+                if values:
+                    facts[key] = max(values)
+        return facts
+
+    @staticmethod
+    def _file_detail(entry: dict, files: dict[int, dict]) -> dict:
+        return files.get(entry.get("movieFileId") or -1) or entry.get("movieFile") or {}
+
+    @staticmethod
+    def _file_matches(item: ItemRow, detail: dict) -> bool:
+        """Is this Radarr file record the file Plex catalogued for the item?
+
+        Basename + size, not full path: Radarr and Plex routinely disagree
+        about mount points, but never about the file itself.
+        """
+        path = detail.get("path") or ""
+        if not path or not item.plex_path:
+            return False
+        if os.path.basename(path) != os.path.basename(item.plex_path):
+            return False
+        size = detail.get("size")
+        if size and item.file_size and int(size) != int(item.file_size):
+            return False
+        return True
 
     def _extract(self, entry: dict, files: dict[int, dict],
                  profiles: dict[int, str], tags: dict[int, str]) -> dict[str, Any]:

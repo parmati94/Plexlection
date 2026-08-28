@@ -98,10 +98,13 @@ TAGS = {1: "4k", 3: "dual", 99: "keep"}
 class FakeArr:
     """Stands in for ArrClient. Records whether the moviefile sweep happened."""
 
-    def __init__(self, by_id, files=None, fail_files=False):
+    def __init__(self, by_id, files=None, fail_files=False, name="main"):
         self._by_id, self._files = by_id, files or {}
         self.fail_files = fail_files
         self.asked_for = None
+        # The provider filters its clients on these, as build_providers only
+        # constructs clients for instances that have both.
+        self.name, self.url, self.api_key = name, "http://arr", "k"
 
     async def by_external_id(self):
         return self._by_id
@@ -131,15 +134,13 @@ def ctx():
 
 
 def settings_with(**kw):
-    s = Settings()
-    s.radarr.url = s.sonarr.url = "http://arr"
-    s.radarr.api_key = s.sonarr.api_key = "k"
-    return s
+    return Settings()
 
 
-def movie_item(tmdb_id=335984):
+def movie_item(tmdb_id=335984, plex_path=None, file_size=None):
     return ItemRow(id=1, rating_key="1", library_key="1", item_type="movie",
-                   title="Blade Runner 2049", tmdb_id=tmdb_id)
+                   title="Blade Runner 2049", tmdb_id=tmdb_id,
+                   plex_path=plex_path, file_size=file_size)
 
 
 def show_item(tvdb_id=76107, title="Cowboy Bebop"):
@@ -154,7 +155,7 @@ async def run(provider, items):
 async def main():
     print("1. Radarr: custom formats come from the moviefile sweep")
     client = FakeArr({335984: MOVIE}, {900: MOVIEFILE})
-    p = RadarrProvider(settings_with(), client=client)
+    p = RadarrProvider(settings_with(), clients=[client])
     f = (await run(p, [movie_item()]))[0].facts
 
     check("asked for the right movieFileId", client.asked_for, [900])
@@ -176,7 +177,7 @@ async def main():
 
     print("\n2. Radarr: a dead moviefile endpoint degrades, it doesn't fail")
     p = RadarrProvider(settings_with(),
-                       client=FakeArr({335984: MOVIE}, fail_files=True))
+                       clients=[FakeArr({335984: MOVIE}, fail_files=True)])
     r = (await run(p, [movie_item()]))[0]
     check("still ok", r.status, "ok")
     check("profile survives", r.facts["radarr.quality_profile"], "Ultra-HD")
@@ -185,7 +186,7 @@ async def main():
     check("score defaults to 0 not null", r.facts["radarr.custom_format_score"], 0)
 
     print("\n3. Radarr: untracked and unmatchable movies")
-    p = RadarrProvider(settings_with(), client=FakeArr({}, {}))
+    p = RadarrProvider(settings_with(), clients=[FakeArr({}, {})])
     r = (await run(p, [movie_item()]))[0]
     check("absent from Radarr is ok, not an error", r.status, "ok")
     check("managed is false", r.facts, {"radarr.managed": False})
@@ -195,16 +196,16 @@ async def main():
     check("skip carries a reason", bool(r.reason), True)
 
     print("\n4. Radarr: vocabulary for the rule builder")
-    p = RadarrProvider(settings_with(), client=FakeArr({}, {}))
+    p = RadarrProvider(settings_with(), clients=[FakeArr({}, {})])
     opts = await p.options()
     check("profiles offered", opts["radarr.quality_profile"], ["1080p/4k", "Ultra-HD"])
     check("custom formats offered",
           opts["radarr.custom_formats"], ["DV Boost", "HDR", "UHD Bluray Tier 01"])
     check("unconfigured provider offers nothing",
-          await RadarrProvider(Settings(), client=FakeArr({}, {})).options(), {})
+          await RadarrProvider(Settings(), clients=[]).options(), {})
 
     print("\n5. Sonarr: series facts")
-    p = SonarrProvider(settings_with(), client=FakeArr({76107: SERIES}))
+    p = SonarrProvider(settings_with(), clients=[FakeArr({76107: SERIES})])
     f = (await run(p, [show_item()]))[0].facts
     check("anime detected", f["sonarr.series_type"], "anime")
     check("ended", f["sonarr.ended"], True)
@@ -221,13 +222,13 @@ async def main():
     check("first aired parsed", f["sonarr.first_aired"], 891561600)
 
     print("\n6. Sonarr: a show with nothing aired is not 'incomplete'")
-    p = SonarrProvider(settings_with(), client=FakeArr({99999: UNAIRED}))
+    p = SonarrProvider(settings_with(), clients=[FakeArr({99999: UNAIRED})])
     f = (await run(p, [show_item(99999, "Announced Show")]))[0].facts
     check("zero expected episodes is not a gap", f["sonarr.incomplete"], False)
     check("missing count is 0", f["sonarr.missing_episodes"], 0)
 
     print("\n7. Sonarr: unmatchable series")
-    p = SonarrProvider(settings_with(), client=FakeArr({}))
+    p = SonarrProvider(settings_with(), clients=[FakeArr({})])
     check("absent from Sonarr", (await run(p, [show_item()]))[0].facts,
           {"sonarr.managed": False})
     check("no tvdb id is skipped",
@@ -236,6 +237,78 @@ async def main():
     print("\n8. Scope declarations")
     check("Radarr is movie-only", RadarrProvider(Settings()).default_applies_to, ("movie",))
     check("Sonarr is show-only", SonarrProvider(Settings()).default_applies_to, ("show",))
+
+    print("\n9. Radarr: two instances — the file match picks the owner")
+    # The Oppenheimer case: main has a 2160p encode, the remux instance has the
+    # actual remux, and the Plex item's file is the remux. The tmdb join alone
+    # would hand the item main's facts (remux: False, MainFrame).
+    remux_size = 60_000_000_000
+    main_movie = {
+        "id": 7, "tmdbId": 872585, "movieFileId": 100, "qualityProfileId": 4,
+        "monitored": True, "status": "released", "tags": [],
+        "rootFolderPath": "/media/Movies", "sizeOnDisk": 41_000_000_000,
+    }
+    main_file = {
+        "id": 100, "path": "/data/Movies/Oppenheimer (2023)/Oppenheimer.2023.2160p.x265-MainFrame.mkv",
+        "size": 41_000_000_000, "releaseGroup": "MainFrame", "edition": "",
+        "customFormats": [{"name": "HDR"}], "customFormatScore": 1805,
+        "qualityCutoffNotMet": True,
+        "quality": {"quality": {"name": "Bluray-2160p", "source": "bluray",
+                                "resolution": 2160, "modifier": "none"},
+                    "revision": {"version": 1, "isRepack": False}},
+    }
+    remux_movie = {
+        "id": 3, "tmdbId": 872585, "movieFileId": 200, "qualityProfileId": 7,
+        "monitored": True, "status": "released", "tags": [],
+        "rootFolderPath": "/media/Movies-REMUX", "sizeOnDisk": remux_size,
+    }
+    remux_file = {
+        "id": 200, "path": "/data/Movies-REMUX/Oppenheimer (2023)/Oppenheimer.2023.REMUX-FraMeSToR.mkv",
+        "size": remux_size, "releaseGroup": "FraMeSToR", "edition": "",
+        "customFormats": [{"name": "HDR"}, {"name": "DV Boost"}],
+        "customFormatScore": 1500, "qualityCutoffNotMet": False,
+        "quality": {"quality": {"name": "Remux-2160p", "source": "bluray",
+                                "resolution": 2160, "modifier": "remux"},
+                    "revision": {"version": 1, "isRepack": False}},
+    }
+    p = RadarrProvider(settings_with(), clients=[
+        FakeArr({872585: main_movie}, {100: main_file}, name="main"),
+        FakeArr({872585: remux_movie}, {200: remux_file}, name="remuxes"),
+    ])
+    # Plex catalogued the remux under a different mount point — basename+size
+    # is what has to carry the match.
+    item = movie_item(872585,
+                      plex_path="/media/paul/PLEXPOOL/Videos/Movies-REMUX/"
+                                "Oppenheimer (2023)/Oppenheimer.2023.REMUX-FraMeSToR.mkv",
+                      file_size=remux_size)
+    f = (await run(p, [item]))[0].facts
+    check("primary is the file's owner", f["radarr.instance"], "remuxes")
+    check("both instances recorded", f["radarr.instances"], ["main", "remuxes"])
+    check("remux true (any copy)", f["radarr.remux"], True)
+    check("cutoff unmet true (any copy)", f["radarr.cutoff_unmet"], True)
+    check("release group from the primary", f["radarr.release_group"], "FraMeSToR")
+    check("root folder from the primary", f["radarr.root_folder"], "/media/Movies-REMUX")
+    check("profile from the primary", f["radarr.quality_profile"], "Ultra-HD")
+    check("score is the best copy's", f["radarr.custom_format_score"], 1805)
+    check("formats unioned", f["radarr.custom_formats"], ["DV Boost", "HDR"])
+
+    print("\n10. Radarr: no file match falls back to instance order")
+    f = (await run(p, [movie_item(872585)]))[0].facts
+    check("primary is the first instance", f["radarr.instance"], "main")
+    check("merged remux still true", f["radarr.remux"], True)
+
+    print("\n11. Sonarr: two instances union list facts, first one wins the rest")
+    second = dict(SERIES, qualityProfileId=7,
+                  statistics=dict(SERIES["statistics"], releaseGroups=["FLUX"]))
+    p = SonarrProvider(settings_with(), clients=[
+        FakeArr({76107: SERIES}, name="main"),
+        FakeArr({76107: second}, name="4k"),
+    ])
+    f = (await run(p, [show_item()]))[0].facts
+    check("primary is the first instance", f["sonarr.instance"], "main")
+    check("both instances recorded", f["sonarr.instances"], ["main", "4k"])
+    check("profile from the primary", f["sonarr.quality_profile"], "1080p/4k")
+    check("release groups unioned", f["sonarr.release_groups"], ["CtrlHD", "FLUX", "NTb"])
 
     print(f"\n{'ALL PASS' if not failures else f'{failures} FAILURE(S)'}")
     sys.exit(1 if failures else 0)

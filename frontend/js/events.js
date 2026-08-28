@@ -52,7 +52,10 @@ export function eventsMixin() {
         else if (d.error) message = `Scan failed: ${d.error}`;
         else if (d.summary) message = d.summary;
         else message = `Scan finished — ${d.done} items.`;
-        this.showToast(message, !d.error && !d.skipped);
+        // Skips are routine (items a provider can't apply to — a movie with no
+        // TMDB id, say), and the count is already in the summary text. Only an
+        // actual error turns the toast red.
+        this.showToast(message, !d.error);
         this.refreshHealth();
       });
 

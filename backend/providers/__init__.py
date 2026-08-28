@@ -35,12 +35,12 @@ def build_providers(settings, db=None) -> list[FactProvider]:
         TautulliProvider(settings, client=TautulliClient(
             settings.tautulli.url, settings.tautulli.api_key
         )),
-        RadarrProvider(settings, client=ArrClient(
-            RADARR, settings.radarr.url, settings.radarr.api_key
-        )),
-        SonarrProvider(settings, client=ArrClient(
-            SONARR, settings.sonarr.url, settings.sonarr.api_key
-        )),
+        RadarrProvider(settings, clients=[
+            ArrClient(RADARR, i.url, i.api_key, name=i.name) for i in settings.radarr
+        ]),
+        SonarrProvider(settings, clients=[
+            ArrClient(SONARR, i.url, i.api_key, name=i.name) for i in settings.sonarr
+        ]),
         # Last: these read what the others produced.
         DerivedProvider(settings),
         ShowRollupProvider(settings, db=db),

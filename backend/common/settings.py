@@ -53,6 +53,35 @@ def _set_path(data: dict, path: str, value: Any) -> None:
     cur[parts[-1]] = value
 
 
+def _split_wildcard(path: str) -> tuple[str, str] | None:
+    """('radarr', 'api_key') for 'radarr.*.api_key'; None for a plain path."""
+    if ".*." not in path:
+        return None
+    prefix, field = path.split(".*.", 1)
+    return prefix, field
+
+
+def _resolve_masked_list(patch: dict, current: dict, prefix: str, field: str) -> None:
+    """Restore masked secrets inside a list of named instances.
+
+    Elements are matched to their stored counterpart by name first — so a
+    reordered list keeps every credential — and by position as the fallback for
+    an element renamed and saved in one edit.
+    """
+    patch_list = patch.get(prefix)
+    if not isinstance(patch_list, list):
+        return
+    current_list = current.get(prefix) or []
+    by_name = {e.get("name"): e for e in current_list if isinstance(e, dict)}
+    for i, element in enumerate(patch_list):
+        if not (isinstance(element, dict) and element.get(field) == MASK):
+            continue
+        stored = by_name.get(element.get("name"))
+        if stored is None and i < len(current_list):
+            stored = current_list[i]
+        element[field] = (stored or {}).get(field, "")
+
+
 class SettingsStore:
     def __init__(self, db):
         self.db = db
@@ -91,7 +120,10 @@ class SettingsStore:
 
         # A secret arriving as the mask means the user never edited it.
         for path in SECRET_PATHS:
-            if _get_path(patch, path) == MASK:
+            wildcard = _split_wildcard(path)
+            if wildcard:
+                _resolve_masked_list(patch, current, *wildcard)
+            elif _get_path(patch, path) == MASK:
                 _set_path(patch, path, _get_path(current, path))
 
         merged = _deep_merge(current, patch)
@@ -107,8 +139,14 @@ class SettingsStore:
         """The settings tree with secrets masked, for GET /api/settings."""
         data = self.get().model_dump()
         for path in SECRET_PATHS:
-            value = _get_path(data, path)
-            _set_path(data, path, MASK if value else "")
+            wildcard = _split_wildcard(path)
+            if wildcard:
+                prefix, field = wildcard
+                for element in data.get(prefix) or []:
+                    element[field] = MASK if element.get(field) else ""
+            else:
+                value = _get_path(data, path)
+                _set_path(data, path, MASK if value else "")
         return data
 
     def configured(self) -> dict[str, bool]:
@@ -118,8 +156,8 @@ class SettingsStore:
             "plex": bool(s.plex.url and s.plex.token),
             "tmdb": bool(s.tmdb.api_key),
             "tautulli": bool(s.tautulli.url and s.tautulli.api_key),
-            "radarr": bool(s.radarr.url and s.radarr.api_key),
-            "sonarr": bool(s.sonarr.url and s.sonarr.api_key),
+            "radarr": any(i.url and i.api_key for i in s.radarr),
+            "sonarr": any(i.url and i.api_key for i in s.sonarr),
         }
 
     # ── first-run seeding ─────────────────────────────────────────────────
@@ -142,10 +180,13 @@ class SettingsStore:
         maybe("tmdb", "api_key", "TMDB_API_KEY")
         maybe("tautulli", "url", "TAUTULLI_URL")
         maybe("tautulli", "api_key", "TAUTULLI_API_KEY")
-        maybe("radarr", "url", "RADARR_URL")
-        maybe("radarr", "api_key", "RADARR_API_KEY")
-        maybe("sonarr", "url", "SONARR_URL")
-        maybe("sonarr", "api_key", "SONARR_API_KEY")
+
+        # Arr sections are lists of instances; env vars seed the first one.
+        for section, env_prefix in (("radarr", "RADARR"), ("sonarr", "SONARR")):
+            url = os.getenv(f"{env_prefix}_URL", "").strip()
+            key = os.getenv(f"{env_prefix}_API_KEY", "").strip()
+            if url and key and not getattr(self.get(), section):
+                patch[section] = [{"name": "main", "url": url, "api_key": key}]
 
         # MEDIA_PATH_MAP="/data/movies:/media/videos/Movies,/data/tv:/media/videos/Shows"
         raw_map = os.getenv("MEDIA_PATH_MAP", "").strip()

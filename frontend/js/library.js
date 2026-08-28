@@ -114,7 +114,7 @@ export function libraryMixin() {
         this.showToast('Discovery started.');
       } catch (e) {
         if (e.status === 409) {
-          this.showToast('A scan is already running.', false);
+          this.showToast('A scan is already running.', 'warn');
         } else if (e.status === 503) {
           this.showToast(e.message, false);
           this.setTab('settings');

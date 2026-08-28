@@ -54,8 +54,10 @@ SONARR = ArrFlavour("sonarr", "series", "tvdbId")
 
 
 class ArrClient:
-    def __init__(self, flavour: ArrFlavour, url: str, api_key: str, timeout_s: float = 60.0):
+    def __init__(self, flavour: ArrFlavour, url: str, api_key: str,
+                 timeout_s: float = 60.0, name: str = "main"):
         self.flavour = flavour
+        self.name = name
         self.url = (url or "").rstrip("/")
         self.api_key = api_key or ""
         self.timeout_s = timeout_s
@@ -66,8 +68,8 @@ class ArrClient:
     def _require(self) -> None:
         if not self.url or not self.api_key:
             raise NotConfiguredError(
-                f"{self.flavour.app.title()} is not configured — add its URL and "
-                f"API key in Settings."
+                f"{self.flavour.app.title()} instance {self.name!r} is not "
+                f"configured — add its URL and API key in Settings."
             )
 
     async def _http(self) -> httpx.AsyncClient:

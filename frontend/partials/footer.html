@@ -18,7 +18,8 @@
        class="fixed bottom-4 right-4 z-[9999] max-w-sm" style="display: none;">
     <div class="rounded-lg border px-4 py-3 shadow-2xl"
          :class="toast?.ok ? 'bg-ok-900/90 border-ok-600 text-ok-400'
-                           : 'bg-danger-900/90 border-danger-600 text-danger-400'">
+                 : toast?.warn ? 'bg-warn-900/90 border-warn-600 text-warn-400'
+                               : 'bg-danger-900/90 border-danger-600 text-danger-400'">
       <div class="flex items-start gap-3">
         <p class="text-body text-ink" x-text="toast?.message"></p>
         <button @click="toast = null" class="ml-auto text-ink-muted hover:text-ink"><svg class="icon-sm"><use href="#i-close"/></svg></button>

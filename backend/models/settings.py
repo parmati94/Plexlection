@@ -4,7 +4,7 @@ Deployment config (log level, auth, data dir) is env-only and lives in
 backend/common/config.py. Everything here is edited in the Settings tab and
 persisted to SQLite; env vars only seed it on first run.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PlexSettings(BaseModel):
@@ -30,8 +30,14 @@ class TautulliSettings(BaseModel):
     api_key: str = ""
 
 
-class ArrSettings(BaseModel):
-    """Radarr or Sonarr. Both v3 APIs take the same two fields."""
+class ArrInstance(BaseModel):
+    """One Radarr or Sonarr server. Both v3 APIs take the same two fields.
+
+    The name is an identifier, not a caption: it appears in facts
+    (`radarr.instance`, `radarr.instances`) and therefore in rules, so renaming
+    an instance orphans any rule that filters on the old name.
+    """
+    name: str = "main"
     url: str = ""
     api_key: str = ""
 
@@ -84,21 +90,43 @@ class Settings(BaseModel):
     plex: PlexSettings = Field(default_factory=PlexSettings)
     tmdb: TmdbSettings = Field(default_factory=TmdbSettings)
     tautulli: TautulliSettings = Field(default_factory=TautulliSettings)
-    radarr: ArrSettings = Field(default_factory=ArrSettings)
-    sonarr: ArrSettings = Field(default_factory=ArrSettings)
+    radarr: list[ArrInstance] = Field(default_factory=list)
+    sonarr: list[ArrInstance] = Field(default_factory=list)
     path_mappings: list[PathMapping] = Field(default_factory=list)
     scan: ScanSettings = Field(default_factory=ScanSettings)
     safety: SafetySettings = Field(default_factory=SafetySettings)
     schedule: ScheduleSettings = Field(default_factory=ScheduleSettings)
 
+    @field_validator("radarr", "sonarr", mode="before")
+    @classmethod
+    def _migrate_single_instance(cls, value):
+        """Stored settings from before multi-instance support hold one object,
+        not a list. An unconfigured one becomes an empty list rather than a
+        blank row the UI would have to explain."""
+        if isinstance(value, dict):
+            return [{"name": "main", **value}] if (value.get("url") or value.get("api_key")) else []
+        return value
+
+    @field_validator("radarr", "sonarr", mode="after")
+    @classmethod
+    def _require_distinct_names(cls, value: list[ArrInstance]) -> list[ArrInstance]:
+        for inst in value:
+            inst.name = inst.name.strip() or "main"
+        names = [inst.name for inst in value]
+        if len(names) != len(set(names)):
+            raise ValueError("Instance names must be unique — they identify "
+                             "each server in facts and rules.")
+        return value
+
 
 # Dotted paths whose values are never returned to the client in the clear.
+# A `*` segment means "every element of the list at that key".
 SECRET_PATHS: frozenset[str] = frozenset({
     "plex.token",
     "tmdb.api_key",
     "tautulli.api_key",
-    "radarr.api_key",
-    "sonarr.api_key",
+    "radarr.*.api_key",
+    "sonarr.*.api_key",
 })
 
 # Top-level sections, used for per-section persistence.

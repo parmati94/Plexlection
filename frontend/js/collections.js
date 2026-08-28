@@ -102,9 +102,10 @@ export function collectionsMixin() {
       try {
         const res = await api.collections.syncAll();
         const failed = res.results.filter((r) => !r.ok).length;
+        // A guard refusal is the app being cautious, not a failure — amber.
         this.showToast(
           `${res.count - failed} of ${res.count} rules synced${failed ? `, ${failed} refused` : ''}.`,
-          !failed,
+          failed ? 'warn' : true,
         );
         await this.loadCollections();
       } catch (e) {
@@ -134,7 +135,7 @@ export function collectionsMixin() {
         if (res.still_labelled) {
           this.showToast(
             `Removed ${res.removed}. ${res.still_labelled} labels remain that we didn't apply — ` +
-            `use force-remove to clear those too.`, false);
+            `use force-remove to clear those too.`, 'warn');
         } else {
           this.showToast(`Removed ${res.removed} labels; collection deleted.`);
         }
