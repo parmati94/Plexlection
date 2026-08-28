@@ -61,6 +61,8 @@ export function ruleBuilderMixin() {
         sync_mode: 'label',
         collection_title: '',
         collection_summary: '',
+        collection_sort_title: '',
+        collection_sort: '',
       };
       this.preview = null;
       this.runPreview();
@@ -85,6 +87,8 @@ export function ruleBuilderMixin() {
           sync_mode: rule.sync_mode ?? 'label',
           collection_title: rule.collection_title ?? '',
           collection_summary: rule.collection_summary ?? '',
+          collection_sort_title: rule.collection_sort_title ?? '',
+          collection_sort: rule.collection_sort ?? '',
         };
         this.runPreview();
       } catch (e) {
@@ -571,8 +575,12 @@ export function ruleBuilderMixin() {
         limit_n: r.limit_n || null,
         enabled: r.enabled,
         sync_mode: r.sync_mode,
-        collection_title: r.collection_title || r.name,
-        collection_summary: r.collection_summary || null,
+        // Empty means "follow the rule name" — sending the name here would
+        // freeze the collection title against future renames.
+        collection_title: r.collection_title || '',
+        collection_summary: r.collection_summary || '',
+        collection_sort_title: r.collection_sort_title || '',
+        collection_sort: r.collection_sort || '',
       };
       try {
         const res = r.id

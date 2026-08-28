@@ -203,13 +203,16 @@ async def create_rule(request: RuleCreate):
     rule_id = await startup.db.execute(
         "INSERT INTO rules (slug, name, description, rule_json, library_keys, item_types,"
         " order_by_key, order_dir, limit_n, enabled, sync_mode, collection_title,"
-        " collection_sort_title, collection_summary, created_at, updated_at)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " collection_sort_title, collection_summary, collection_sort, created_at, updated_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (slug, request.name, request.description, json.dumps(tree),
          json.dumps(request.library_keys), json.dumps(request.item_types),
          order_by, request.order_dir, request.limit_n, int(request.enabled),
-         request.sync_mode, request.collection_title or request.name,
-         request.collection_sort_title, request.collection_summary, now, now),
+         # Stored as given, NOT defaulted to the name: an empty title follows
+         # the rule name forever, a persisted one freezes against renames.
+         request.sync_mode, request.collection_title or None,
+         request.collection_sort_title, request.collection_summary,
+         request.collection_sort, now, now),
     )
     logger.info("Created rule %d (%s)", rule_id, slug)
     return await get_rule(rule_id)
@@ -249,11 +252,13 @@ async def update_rule(rule_id: int, request: RuleUpdate):
     if request.sync_mode is not None:
         put("sync_mode", request.sync_mode)
     if request.collection_title is not None:
-        put("collection_title", request.collection_title)
+        put("collection_title", request.collection_title or None)
     if request.collection_sort_title is not None:
         put("collection_sort_title", request.collection_sort_title)
     if request.collection_summary is not None:
         put("collection_summary", request.collection_summary)
+    if request.collection_sort is not None:
+        put("collection_sort", request.collection_sort)
 
     if not sets:
         return await get_rule(rule_id)

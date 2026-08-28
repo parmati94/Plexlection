@@ -61,17 +61,28 @@ class FakePlex:
             bucket.add(label) if add else bucket.discard(label)
         return len(rating_keys), []
 
-    async def ensure_smart_collection(self, section_key, title, labels, libtype="movie"):
+    async def ensure_smart_collection(self, section_key, title, labels,
+                                      libtype="movie", rating_key=None):
         if self.fail_smart:
             raise RuntimeError("createCollection(smart=True) not supported")
         size = len(set().union(*(self._keys_with(x) for x in labels)) if labels else set())
-        self.collections[title] = {"labels": labels, "size": size}
-        return {"created": True, "smart": True, "rating_key": "9001", "size": size}
+        # Mirror the real client: a known rating key means rename-in-place.
+        renamed = False
+        if rating_key:
+            for old_title, entry in list(self.collections.items()):
+                if entry.get("rating_key") == rating_key and old_title != title:
+                    self.collections[title] = self.collections.pop(old_title)
+                    renamed = True
+        self.collections.setdefault(title, {})
+        self.collections[title].update(
+            {"labels": labels, "size": size, "rating_key": rating_key or "9001"})
+        return {"created": not renamed, "renamed": renamed, "smart": True,
+                "rating_key": self.collections[title]["rating_key"], "size": size}
 
-    async def update_collection(self, section_key, title, **kw):
+    async def update_collection(self, section_key, title, rating_key=None, **kw):
         return [k for k, v in kw.items() if v]
 
-    async def delete_collection(self, section_key, title):
+    async def delete_collection(self, section_key, title, rating_key=None):
         return self.collections.pop(title, None) is not None
 
 
@@ -186,6 +197,22 @@ async def main():
     diff = await engine.sync_rule(rule, dry_run=False)
     check("no writes", len(plex.writes), 0)
     check("all kept", diff.kept, 6)
+
+    # ── 3b. rename follows the owned collection ────────────────────────
+    print("\n3b. A title change renames the collection, not duplicates it")
+    adopted = await db.fetch_val(
+        "SELECT collection_rating_key FROM rules WHERE id = ?", (rule["id"],))
+    check("collection rating key adopted on sync", adopted, "9001")
+    renamed_rule = {**rule, "collection_title": "Scope Renamed",
+                    "collection_rating_key": adopted}
+    diff = await engine.sync_rule(renamed_rule, dry_run=False)
+    check("new title present", "Scope Renamed" in plex.collections)
+    check("old title gone — no stranded sibling", "Scope" not in plex.collections)
+    check("same underlying collection",
+          plex.collections["Scope Renamed"]["rating_key"], "9001")
+    # Rename back so the remaining sections see the original title.
+    await engine.sync_rule({**rule, "collection_rating_key": adopted}, dry_run=False)
+    check("renamed back for the rest of the suite", "Scope" in plex.collections)
 
     # ── 4. a hand-applied label survives ───────────────────────────────
     print("\n4. Someone labels an item by hand")

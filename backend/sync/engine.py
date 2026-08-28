@@ -247,7 +247,8 @@ class SyncEngine:
         title = rule.get("collection_title") or rule["name"]
         try:
             info = await plex.ensure_smart_collection(
-                section_key, title, [label, pin_label], libtype=libtype
+                section_key, title, [label, pin_label], libtype=libtype,
+                rating_key=rule.get("collection_rating_key"),
             )
         except Exception as exc:
             diff.warnings.append(
@@ -256,6 +257,16 @@ class SyncEngine:
                 f"or switch this rule to static membership."
             )
             return {"error": str(exc)}
+
+        # Remember which collection is ours. This is what makes a later title
+        # change a *rename* of this collection rather than the creation of a
+        # sibling — adopted here on first sync (or re-adopted if someone
+        # deleted the collection in Plex and sync recreated it).
+        if info.get("rating_key") and info["rating_key"] != rule.get("collection_rating_key"):
+            await self.db.execute(
+                "UPDATE rules SET collection_rating_key = ? WHERE id = ?",
+                (info["rating_key"], rule["id"]),
+            )
 
         # Read back and compare. createCollection(smart=True, filters=...) is
         # version-sensitive, so a silently-empty collection is a real outcome.
@@ -273,6 +284,7 @@ class SyncEngine:
             summary=rule.get("collection_summary"),
             poster_path=rule.get("poster_ref"),
             sort_mode=rule.get("collection_sort"),
+            rating_key=info.get("rating_key"),
         )
         info["updated_fields"] = changed
         return info
@@ -422,11 +434,16 @@ class SyncEngine:
         title = rule.get("collection_title") or rule["name"]
         self._progress(rule, "deleting collection", len(ours), len(ours))
         try:
-            deleted = await plex.delete_collection(section_key, title)
+            deleted = await plex.delete_collection(
+                section_key, title, rating_key=rule.get("collection_rating_key")
+            )
         except Exception as exc:
             logger.warning("Could not delete collection %r: %s", title, exc)
 
         await self.db.execute("DELETE FROM sync_membership WHERE rule_id = ?", (rule["id"],))
+        await self.db.execute(
+            "UPDATE rules SET collection_rating_key = NULL WHERE id = ?", (rule["id"],)
+        )
 
         self._progress_done()
         leftover = len(await plex.rating_keys_with_label(section_key, label, libtype))

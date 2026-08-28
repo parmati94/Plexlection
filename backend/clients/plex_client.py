@@ -327,11 +327,29 @@ class PlexClient:
 
         return await asyncio.to_thread(_run)
 
+    def _collection_by_key(self, server, rating_key) -> object | None:
+        """The collection a rule remembers owning, if Plex still has it.
+
+        A missing or repurposed rating key (collection deleted by hand) is a
+        normal answer, not an error — the caller falls back to a title lookup.
+        """
+        if not rating_key:
+            return None
+        try:
+            candidate = server.fetchItem(int(rating_key))
+        except Exception:
+            return None
+        return candidate if getattr(candidate, "type", None) == "collection" else None
+
     async def ensure_smart_collection(
         self, section_key: str, title: str, labels: list[str],
-        libtype: str = LIBTYPE_MOVIE,
+        libtype: str = LIBTYPE_MOVIE, rating_key: str | None = None,
     ) -> dict:
         """Create (or verify) a smart collection filtered on `labels`.
+
+        `rating_key` is the collection this rule already owns. When its title no
+        longer matches, the collection is *renamed* — looking up by title alone
+        here would create a sibling under the new name and strand the old one.
 
         `createCollection(smart=True, filters=...)` is the most version-sensitive
         call in this client, so the result is read back and its size compared to
@@ -344,11 +362,17 @@ class PlexClient:
             server = self._connect_sync()
             section = server.library.sectionByID(int(section_key))
 
-            existing = None
-            for collection in section.collections():
-                if collection.title == title:
-                    existing = collection
-                    break
+            renamed = False
+            existing = self._collection_by_key(server, rating_key)
+            if existing is not None and existing.title != title:
+                existing.editTitle(title)
+                renamed = True
+
+            if existing is None:
+                for collection in section.collections():
+                    if collection.title == title:
+                        existing = collection
+                        break
 
             created = False
             if existing is None:
@@ -364,6 +388,7 @@ class PlexClient:
 
             return {
                 "created": created,
+                "renamed": renamed,
                 "smart": bool(getattr(existing, "smart", False)),
                 "rating_key": str(existing.ratingKey),
                 "size": size,
@@ -395,6 +420,7 @@ class PlexClient:
         self, section_key: str, title: str,
         sort_title: str | None = None, summary: str | None = None,
         poster_path: str | None = None, sort_mode: str | None = None,
+        rating_key: str | None = None,
     ) -> list[str]:
         """Apply presentation metadata. Returns the fields actually changed.
 
@@ -406,11 +432,12 @@ class PlexClient:
         def _run() -> list[str]:
             server = self._connect_sync()
             section = server.library.sectionByID(int(section_key))
-            collection = None
-            for candidate in section.collections():
-                if candidate.title == title:
-                    collection = candidate
-                    break
+            collection = self._collection_by_key(server, rating_key)
+            if collection is None:
+                for candidate in section.collections():
+                    if candidate.title == title:
+                        collection = candidate
+                        break
             if collection is None:
                 return []
 
@@ -434,11 +461,16 @@ class PlexClient:
 
         return await asyncio.to_thread(_run)
 
-    async def delete_collection(self, section_key: str, title: str) -> bool:
+    async def delete_collection(self, section_key: str, title: str,
+                                rating_key: str | None = None) -> bool:
         self._require()
 
         def _run() -> bool:
             server = self._connect_sync()
+            owned = self._collection_by_key(server, rating_key)
+            if owned is not None:
+                owned.delete()
+                return True
             section = server.library.sectionByID(int(section_key))
             for collection in section.collections():
                 if collection.title == title:
