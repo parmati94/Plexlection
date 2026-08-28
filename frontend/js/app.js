@@ -120,8 +120,9 @@ document.addEventListener('alpine:init', () => {
     diffModal: { open: false, loading: false, diff: null, ruleId: null, guarded: false, guardMessage: '' },
     syncHistory: [],
     historyFor: null,
-    // Inline "Edit details" on a collection card (presentation metadata).
+    // "Edit details" modal for a collection's presentation metadata.
     detailsFor: null,
+    detailsName: '',
     detailsDraft: {},
 
     // New-rule springboard: name + target first, then the full editor.

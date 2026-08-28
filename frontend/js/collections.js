@@ -155,13 +155,10 @@ export function collectionsMixin() {
       }
     },
 
-    // ── presentation details (title, summary, order) ────────────────────
+    // ── presentation details (title, summary, order) — modal ────────────
     openDetails(c) {
-      if (this.detailsFor === c.id) {
-        this.detailsFor = null;
-        return;
-      }
       this.detailsFor = c.id;
+      this.detailsName = c.collection_title || c.name;
       this.detailsDraft = {
         collection_title: c.collection_title ?? '',
         collection_sort_title: c.collection_sort_title ?? '',
