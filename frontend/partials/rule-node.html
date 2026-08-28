@@ -68,8 +68,9 @@
         </div>
       </template>
 
-      <!-- Condition leaf -->
-      <template x-if="n.type === 'cmp'">
+      <!-- Condition leaf (a plain value comparison, or one against a library
+           aggregate — "top 10% played" is `>= library percentile 90`) -->
+      <template x-if="n.type === 'cmp' || n.type === 'agg_cmp'">
         <div class="flex flex-wrap items-center gap-1.5">
 
           <!-- Fact, grouped by namespace -->
@@ -94,13 +95,41 @@
             </template>
           </select>
 
-          <!-- Operators, straight from the registry — never hardcoded -->
+          <!-- Operators, straight from the registry — never hardcoded. An
+               aggregate comparison uses the fixed gt/gte/lt/lte set instead. -->
           <select @change="n.node.op = $event.target.value; onOpChange(n.id)"
                   class="rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s focus:border-accent-500 focus:outline-none">
-            <template x-for="o in operatorsFor(n.node.key)" :key="o.op">
+            <template x-for="o in (n.node.type === 'agg_cmp' ? aggOps() : operatorsFor(n.node.key))" :key="o.op">
               <option :value="o.op" :selected="o.op === n.node.op" x-text="o.label"></option>
             </template>
           </select>
+
+          <!-- Compare against a value, or against the library itself.
+               Only offered where an aggregate is meaningful. -->
+          <template x-if="isAggable(n.node.key)">
+            <select @change="setCompareMode(n.id, $event.target.value)"
+                    class="rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s text-ink-muted focus:border-accent-500 focus:outline-none">
+              <option value="value" :selected="n.node.type === 'cmp'">a value</option>
+              <template x-for="a in aggregates()" :key="a.agg">
+                <option :value="a.agg"
+                        :selected="n.node.type === 'agg_cmp' && n.node.agg === a.agg"
+                        x-text="a.label"></option>
+              </template>
+            </select>
+          </template>
+
+          <template x-if="n.node.type === 'agg_cmp' && n.node.agg === 'percentile'">
+            <div class="flex items-center gap-1.5">
+              <div class="flex items-stretch overflow-hidden rounded-md border border-line-strong bg-sunken focus-within:border-accent-500">
+                <input type="number" min="0" max="100" step="1"
+                       :value="n.node.agg_arg"
+                       @input="n.node.agg_arg = $event.target.value === '' ? null : Number($event.target.value); touchRule()"
+                       class="w-16 bg-transparent px-2 py-1 text-body-s focus:outline-none" />
+                <span class="flex items-center border-l border-line bg-raised px-2 text-micro text-ink-muted">th</span>
+              </div>
+              <span class="text-micro text-ink-faint" x-text="aggHint(n.node)"></span>
+            </div>
+          </template>
 
           <!-- Value editor, switched on the operator's declared value_kind -->
           <!-- Number input carries its unit. Storage stays canonical; only the

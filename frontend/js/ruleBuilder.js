@@ -26,6 +26,23 @@ export const EMPTY_TREE = () => ({
   root: { type: 'and', children: [], _id: `n${(_idSeq += 1)}` },
 });
 
+// Library-relative comparisons (agg_cmp nodes). The backend has supported
+// these since the compiler was written; this is their UI. Operators and
+// aggregates mirror AGG_OPERATORS / AGGREGATES in backend/rules/operators.py.
+const AGG_OPS = [
+  { op: 'gte', label: '≥' },
+  { op: 'gt', label: '>' },
+  { op: 'lte', label: '≤' },
+  { op: 'lt', label: '<' },
+];
+const AGGREGATES = [
+  { agg: 'percentile', label: 'library percentile' },
+  { agg: 'median', label: 'library median' },
+  { agg: 'mean', label: 'library average' },
+  { agg: 'min', label: 'library minimum' },
+  { agg: 'max', label: 'library maximum' },
+];
+
 function assignIds(node) {
   if (!node || typeof node !== 'object') return node;
   if (!node._id) node._id = `n${(_idSeq += 1)}`;
@@ -233,7 +250,16 @@ export function ruleBuilderMixin() {
       const entry = this.nodeById(id);
       if (!entry) return;
       const spec = this.specFor(entry.node.key);
-      entry.node.op = spec?.operators?.[0]?.op ?? 'eq';
+      // A library-relative comparison only holds for aggregatable facts; a
+      // fact change that leaves that world reverts the node to a plain cmp.
+      if (entry.node.type === 'agg_cmp' && !spec?.aggregatable) {
+        entry.node.type = 'cmp';
+        delete entry.node.agg;
+        delete entry.node.agg_arg;
+      }
+      entry.node.op = entry.node.type === 'agg_cmp'
+        ? 'gte'
+        : (spec?.operators?.[0]?.op ?? 'eq');
       entry.node.value = spec?.type === 'bool' ? null : '';
       this.touchRule();
     },
@@ -340,13 +366,54 @@ export function ruleBuilderMixin() {
     },
 
     opArity(node) {
+      if (node.type === 'agg_cmp') return 0; // the aggregate IS the operand
       return this.opMeta(node)?.arity ?? 1;
     },
 
     valueKind(node) {
+      if (node.type === 'agg_cmp') return null;
       const meta = this.opMeta(node);
       if (!meta || meta.arity === 0) return null;
       return meta.value_kind;
+    },
+
+    // ── library-relative comparisons ────────────────────────────────────
+    aggOps() {
+      return AGG_OPS;
+    },
+    aggregates() {
+      return AGGREGATES;
+    },
+    isAggable(key) {
+      return !!this.specFor(key)?.aggregatable;
+    },
+    setCompareMode(id, mode) {
+      const entry = this.nodeById(id);
+      if (!entry) return;
+      const node = entry.node;
+      if (mode === 'value') {
+        node.type = 'cmp';
+        delete node.agg;
+        delete node.agg_arg;
+        node.op = this.operatorsFor(node.key)[0]?.op ?? 'gte';
+        node.value = '';
+      } else {
+        node.type = 'agg_cmp';
+        if (!AGG_OPS.some((o) => o.op === node.op)) node.op = 'gte';
+        node.agg = mode;
+        if (mode === 'percentile') node.agg_arg = node.agg_arg ?? 90;
+        else delete node.agg_arg;
+        delete node.value;
+      }
+      this.touchRule();
+    },
+    /** "top 10%" for ≥ 90th percentile — the reading people actually want. */
+    aggHint(node) {
+      if (node.type !== 'agg_cmp' || node.agg !== 'percentile') return '';
+      const pct = Number(node.agg_arg);
+      if (!Number.isFinite(pct)) return '';
+      if (node.op === 'gte' || node.op === 'gt') return `= top ${Math.round((100 - pct) * 10) / 10}%`;
+      return `= bottom ${Math.round(pct * 10) / 10}%`;
     },
 
     coverageNote(key) {
