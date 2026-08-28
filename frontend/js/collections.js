@@ -15,6 +15,15 @@ export function collectionsMixin() {
       }
     },
 
+    /** Has this collection been curated by hand?
+     *
+     *  Drives whether the card spells out the arithmetic between the rule's
+     *  match and what Plex shows. Without pins or vetoes the two agree, and
+     *  the breakdown would be three extra rows saying nothing. */
+    curated(c) {
+      return !!(c.pinned_count || c.vetoed_count);
+    },
+
     /** Preview. Never writes, and ignores the guards so you can always see
      *  what a refused sync *would* have done. */
     async showDiff(ruleId) {

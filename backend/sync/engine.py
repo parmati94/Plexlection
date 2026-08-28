@@ -56,6 +56,11 @@ class SyncDiff:
     kept: int = 0
     pinned: int = 0
     vetoed: int = 0
+    # The user's curation, resolved to titles. Counts alone make pins and vetoes
+    # write-only: you can see that four exist but not which four, and the only
+    # way to find out is to go label-hunting in Plex.
+    pinned_items: list[dict] = field(default_factory=list)
+    vetoed_items: list[dict] = field(default_factory=list)
     drifted: int = 0
     stale: int = 0
     in_scope: int = 0
@@ -74,6 +79,7 @@ class SyncDiff:
             "matched": self.matched, "add": self.add, "remove": self.remove,
             "add_count": len(self.add), "remove_count": len(self.remove),
             "kept": self.kept, "pinned": self.pinned, "vetoed": self.vetoed,
+            "pinned_items": self.pinned_items, "vetoed_items": self.vetoed_items,
             "drifted": self.drifted, "stale": self.stale, "in_scope": self.in_scope,
             "warnings": self.warnings, "dry_run": self.dry_run,
             "applied": self.applied, "collection": self.collection,
@@ -219,9 +225,22 @@ class SyncEngine:
         to_remove = (current & ours) - target
         diff.kept = len(target & current)
 
-        titles = await self._titles(to_add | to_remove)
+        titles = await self._titles(to_add | to_remove | pinned | vetoed)
         diff.add = [{"rating_key": k, **titles.get(k, {})} for k in sorted(to_add)]
         diff.remove = [{"rating_key": k, **titles.get(k, {})} for k in sorted(to_remove)]
+
+        # A pin or veto can name something we've never indexed — a hand-applied
+        # label on an item outside this rule's libraries, say. Fall back to the
+        # rating key so it's still visible and still removable, rather than
+        # silently dropping out of the list.
+        def _curated(keys: set[str]) -> list[dict]:
+            return [
+                {"rating_key": k, **(titles.get(k) or {"title": f"Item {k}", "year": None})}
+                for k in sorted(keys, key=lambda k: (titles.get(k, {}).get("title") or "", k))
+            ]
+
+        diff.pinned_items = _curated(pinned)
+        diff.vetoed_items = _curated(vetoed)
 
         self._guard(diff, current, settings, force)
 
@@ -436,8 +455,18 @@ class SyncEngine:
              diff.matched, len(diff.add), len(diff.remove), diff.kept,
              diff.pinned, diff.vetoed, diff.drifted,
              "ok" if diff.applied or diff.dry_run else "error", None,
-             json.dumps({"add": diff.add[:200], "remove": diff.remove[:200],
-                         "warnings": diff.warnings})),
+             json.dumps({
+                 "add": diff.add[:200], "remove": diff.remove[:200],
+                 "warnings": diff.warnings,
+                 # Plex's own count, read back after the write. Worth storing
+                 # rather than deriving from matched − vetoed + pinned, because
+                 # a pin on something the rule already matches would make that
+                 # arithmetic overcount, and it's the number the user sees in
+                 # Plex that the Collections tab needs to agree with.
+                 "collection_size": (diff.collection or {}).get("size"),
+                 "pinned_items": diff.pinned_items,
+                 "vetoed_items": diff.vetoed_items,
+             })),
         )
 
     # ── teardown ──────────────────────────────────────────────────────────
