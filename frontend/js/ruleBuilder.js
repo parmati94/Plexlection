@@ -76,12 +76,23 @@ export function ruleBuilderMixin() {
         limit_n: null,
         enabled: true,
         sync_mode: 'label',
-        collection_title: '',
-        collection_summary: '',
-        collection_sort_title: '',
-        collection_sort: '',
       };
       this.preview = null;
+      this.runPreview();
+    },
+
+    // ── guided creation ─────────────────────────────────────────────────
+    openNewRule() {
+      this.newRuleDialog = { show: true, name: '', type: 'movie' };
+    },
+
+    createRuleFromDialog() {
+      const { name, type } = this.newRuleDialog;
+      if (!name.trim()) return;
+      this.newRule();
+      this.editingRule.name = name.trim();
+      this.editingRule.item_types = [type];
+      this.newRuleDialog.show = false;
       this.runPreview();
     },
 
@@ -102,10 +113,6 @@ export function ruleBuilderMixin() {
           limit_n: rule.limit_n,
           enabled: rule.enabled,
           sync_mode: rule.sync_mode ?? 'label',
-          collection_title: rule.collection_title ?? '',
-          collection_summary: rule.collection_summary ?? '',
-          collection_sort_title: rule.collection_sort_title ?? '',
-          collection_sort: rule.collection_sort ?? '',
         };
         this.runPreview();
       } catch (e) {
@@ -525,6 +532,63 @@ export function ruleBuilderMixin() {
       return this.suggestions[key] ?? [];
     },
 
+    // ── fact picker (searchable combobox over the registry) ─────────────
+    /** The display name for a fact key, unit-qualified like the picker rows. */
+    factLabel(key) {
+      for (const g of this.factOptionGroups()) {
+        const hit = g.facts.find((f) => f.key === key);
+        if (hit) return hit.optionLabel;
+      }
+      return key || 'Pick a fact…';
+    },
+
+    /** factOptionGroups narrowed by a search query — matches the label, the
+     *  raw key, and the group name, so "radarr", "score" and "bitrate" all
+     *  land where you'd expect. */
+    factSearchGroups(query) {
+      const q = String(query ?? '').trim().toLowerCase();
+      const groups = this.factOptionGroups();
+      if (!q) return groups;
+      return groups
+        .map((g) => ({
+          ...g,
+          facts: g.facts.filter((f) =>
+            `${f.optionLabel} ${f.key} ${g.group}`.toLowerCase().includes(q)),
+        }))
+        .filter((g) => g.facts.length);
+    },
+
+    /** Same picker, for "Order by": column sorts first, then sortable facts. */
+    orderByGroups(query) {
+      const basics = [
+        { key: null, optionLabel: 'Title' },
+        { key: 'year', optionLabel: 'Year' },
+        { key: 'added_at', optionLabel: 'Date added' },
+        { key: 'size', optionLabel: 'File size' },
+        { key: 'random', optionLabel: 'Random' },
+      ];
+      const groups = [{ group: 'Sort', facts: basics },
+                      { group: 'Facts', facts: this.sortableFacts() }];
+      const q = String(query ?? '').trim().toLowerCase();
+      if (!q) return groups;
+      return groups
+        .map((g) => ({
+          ...g,
+          facts: g.facts.filter((f) =>
+            `${f.optionLabel} ${f.key ?? ''}`.toLowerCase().includes(q)),
+        }))
+        .filter((g) => g.facts.length);
+    },
+
+    orderByLabel() {
+      const key = this.editingRule?.order_by_key;
+      for (const g of this.orderByGroups('')) {
+        const hit = g.facts.find((f) => f.key === key);
+        if (hit) return hit.optionLabel;
+      }
+      return 'Title';
+    },
+
     /** Client-side narrowing for the custom dropdown, capped so a huge
      *  vocabulary (every cast member in the library) stays scrollable rather
      *  than becoming a thousand rendered rows. */
@@ -652,12 +716,8 @@ export function ruleBuilderMixin() {
         limit_n: r.limit_n || null,
         enabled: r.enabled,
         sync_mode: r.sync_mode,
-        // Empty means "follow the rule name" — sending the name here would
-        // freeze the collection title against future renames.
-        collection_title: r.collection_title || '',
-        collection_summary: r.collection_summary || '',
-        collection_sort_title: r.collection_sort_title || '',
-        collection_sort: r.collection_sort || '',
+        // No collection_* fields: presentation is edited on the Collections
+        // screen, and an absent field in RuleUpdate means "leave it alone".
       };
       try {
         const res = r.id

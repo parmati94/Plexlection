@@ -155,6 +155,29 @@ export function collectionsMixin() {
       }
     },
 
+    // ── presentation details (title, summary, order) — modal ────────────
+    openDetails(c) {
+      this.detailsFor = c.id;
+      this.detailsName = c.collection_title || c.name;
+      this.detailsDraft = {
+        collection_title: c.collection_title ?? '',
+        collection_sort_title: c.collection_sort_title ?? '',
+        collection_summary: c.collection_summary ?? '',
+        collection_sort: c.collection_sort ?? '',
+      };
+    },
+
+    async saveDetails(ruleId) {
+      try {
+        await api.rules.update(ruleId, { ...this.detailsDraft });
+        this.detailsFor = null;
+        await this.loadCollections();
+        this.showToast('Details saved — they apply on the next sync.');
+      } catch (e) {
+        this.showToast(e.message, false);
+      }
+    },
+
     async uploadPoster(ruleId, event) {
       const file = event.target.files?.[0];
       if (!file) return;
