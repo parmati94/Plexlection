@@ -34,13 +34,18 @@ def check(label: str, got, want) -> None:
 
 
 class StubPlex:
-    """Stands in for PlexClient. Returns whatever items the test hands it."""
+    """Stands in for PlexClient. Returns whatever items the test hands it.
 
-    def __init__(self, items: list[PlexItem]):
+    `claims` overrides what section_size reports, so a pass can be made to come
+    up short of what Plex says the section holds — the truncated-read case.
+    """
+
+    def __init__(self, items: list[PlexItem], claims: int | None = None):
         self.items = items
+        self.claims = claims
 
     async def section_size(self, section_key, libtype="movie"):
-        return len(self.items)
+        return len(self.items) if self.claims is None else self.claims
 
     async def iter_items(self, section_key, libtype="movie", page_size=200):
         for i in range(0, len(self.items), page_size):
@@ -74,8 +79,8 @@ async def main() -> None:
     settings.plex.libraries = ["1"]
     settings.path_mappings = [PathMapping(plex="/data/movies", local=str(media))]
 
-    async def discover(items):
-        return await run_discovery(db, settings, StubPlex(items), None)
+    async def discover(items, claims=None):
+        return await run_discovery(db, settings, StubPlex(items, claims), None)
 
     async def row(rating_key):
         return await db.fetch_one(
@@ -161,6 +166,30 @@ async def main() -> None:
     revived = await row("103")
     check("un-deleted in place", revived["deleted_at"], None)
     check("not counted as new", r.added, 0)
+
+    # ── 7. a short read must not be mistaken for deletions ─────────────
+    # Plex's own count already reflects real deletions, so seeing fewer items
+    # than it claims means we failed to read — a truncated response, a parse
+    # that dropped rows. Soft-deleting the difference would empty the catalogue
+    # silently, since nothing about it errors.
+    print("\n7. Section returns fewer items than Plex claims")
+    live_before = await db.fetch_val(
+        "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL", default=0)
+    r = await discover(
+        [make_item(101, "plex://movie/aaa", "Alpha", "/data/movies/a.mkv")],
+        claims=4,
+    )
+    check("section flagged incomplete", r.incomplete, ["1"])
+    check("no soft deletes attempted", r.removed, 0)
+    live_after = await db.fetch_val(
+        "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL", default=0)
+    check("nothing was deleted", live_after, live_before)
+
+    # ── 8. and a complete pass still deletes ───────────────────────────
+    print("\n8. A complete pass still reconciles deletions")
+    r = await discover([make_item(101, "plex://movie/aaa", "Alpha", "/data/movies/a.mkv")])
+    check("not flagged", r.incomplete, [])
+    check("the rest soft-deleted", r.removed, live_before - 1)
 
     await db.stop()
     print(f"\n{'ALL PASS' if not failures else f'{failures} FAILURE(S)'}")
