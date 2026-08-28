@@ -330,6 +330,41 @@ document.addEventListener('alpine:init', () => {
       this.confirmDialog.show = false;
     },
   }));
+
+  /**
+   * Reusable searchable dropdown — behavior only; markup is {{> combobox }}.
+   *
+   * Usage:
+   *   <div x-data="combobox({
+   *          label:     () => currentLabel(),
+   *          groups:    (q) => [{ group, facts: [{ key, optionLabel, description? }] }],
+   *          select:    (f) => { ... },
+   *          isCurrent: (f) => f.key === current,   // optional
+   *          placeholder: 'Search facts…',          // optional
+   *        })">{{> combobox }}</div>
+   *
+   * Config callbacks are Alpine expressions, so they close over the caller's
+   * scope — including x-for iteration variables.
+   */
+  Alpine.data('combobox', (cfg) => ({
+    cfg: { placeholder: 'Search…', isCurrent: () => false, ...cfg },
+    open: false,
+    q: '',
+    toggle() {
+      this.open = !this.open;
+      if (this.open) {
+        this.q = '';
+        this.$nextTick(() => this.$refs.cbSearch?.focus());
+      }
+    },
+    close() {
+      this.open = false;
+    },
+    pick(item) {
+      this.cfg.select(item);
+      this.close();
+    },
+  }));
 });
 
 Alpine.start();

@@ -1,0 +1,43 @@
+<!-- Searchable dropdown. Markup half of the Alpine 'combobox' component
+     (registered in app.js) — include inside an element carrying
+     x-data="combobox({ label, groups, select, ... })". -->
+<div class="relative" @click.outside="close()" @keydown.escape.stop="close()">
+  <button type="button" @click="toggle()"
+          class="flex items-center gap-1.5 rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s text-ink transition-colors hover:border-accent-500/60 focus:border-accent-500 focus:outline-none"
+          :class="open && 'border-accent-500'">
+    <span class="max-w-[13rem] truncate" x-text="cfg.label()"></span>
+    <svg class="icon-sm shrink-0 text-ink-faint transition-transform"
+         :class="open && 'rotate-180'"><use href="#i-chevron-down"/></svg>
+  </button>
+
+  <div x-show="open" style="display: none;"
+       x-transition:enter="transition ease-out duration-100"
+       x-transition:enter-start="opacity-0 -translate-y-1"
+       x-transition:enter-end="opacity-100 translate-y-0"
+       class="absolute left-0 top-full z-30 mt-1 w-72 overflow-hidden rounded-lg border border-line-strong bg-surface shadow-2xl">
+    <div class="relative border-b border-line p-2">
+      <svg class="icon-sm pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-faint"><use href="#i-search"/></svg>
+      <input x-ref="cbSearch" x-model="q" type="text" :placeholder="cfg.placeholder"
+             class="w-full rounded-md bg-sunken py-1.5 pl-8 pr-2 text-body-s text-ink placeholder-ink-faint focus:outline-none" />
+    </div>
+
+    <div class="max-h-72 overflow-y-auto py-1">
+      <template x-for="g in cfg.groups(q)" :key="g.group">
+        <div>
+          <p class="px-2.5 pb-0.5 pt-2 text-micro font-semibold uppercase tracking-wider text-ink-faint"
+             x-text="g.group"></p>
+          <template x-for="f in g.facts" :key="f.key ?? '__default'">
+            <button type="button" @click="pick(f)" :title="f.description ?? ''"
+                    class="flex w-full items-baseline gap-2 px-2.5 py-1 text-left text-body-s transition-colors hover:bg-raised"
+                    :class="cfg.isCurrent(f) ? 'text-accent-300' : 'text-ink'">
+              <span class="truncate" x-text="f.optionLabel"></span>
+              <svg x-show="cfg.isCurrent(f)" class="icon-sm ml-auto shrink-0"><use href="#i-check"/></svg>
+            </button>
+          </template>
+        </div>
+      </template>
+      <p x-show="!cfg.groups(q).length" style="display: none;"
+         class="px-2.5 py-3 text-center text-body-s text-ink-muted">Nothing matches.</p>
+    </div>
+  </div>
+</div>

@@ -525,6 +525,63 @@ export function ruleBuilderMixin() {
       return this.suggestions[key] ?? [];
     },
 
+    // ── fact picker (searchable combobox over the registry) ─────────────
+    /** The display name for a fact key, unit-qualified like the picker rows. */
+    factLabel(key) {
+      for (const g of this.factOptionGroups()) {
+        const hit = g.facts.find((f) => f.key === key);
+        if (hit) return hit.optionLabel;
+      }
+      return key || 'Pick a fact…';
+    },
+
+    /** factOptionGroups narrowed by a search query — matches the label, the
+     *  raw key, and the group name, so "radarr", "score" and "bitrate" all
+     *  land where you'd expect. */
+    factSearchGroups(query) {
+      const q = String(query ?? '').trim().toLowerCase();
+      const groups = this.factOptionGroups();
+      if (!q) return groups;
+      return groups
+        .map((g) => ({
+          ...g,
+          facts: g.facts.filter((f) =>
+            `${f.optionLabel} ${f.key} ${g.group}`.toLowerCase().includes(q)),
+        }))
+        .filter((g) => g.facts.length);
+    },
+
+    /** Same picker, for "Order by": column sorts first, then sortable facts. */
+    orderByGroups(query) {
+      const basics = [
+        { key: null, optionLabel: 'Title' },
+        { key: 'year', optionLabel: 'Year' },
+        { key: 'added_at', optionLabel: 'Date added' },
+        { key: 'size', optionLabel: 'File size' },
+        { key: 'random', optionLabel: 'Random' },
+      ];
+      const groups = [{ group: 'Sort', facts: basics },
+                      { group: 'Facts', facts: this.sortableFacts() }];
+      const q = String(query ?? '').trim().toLowerCase();
+      if (!q) return groups;
+      return groups
+        .map((g) => ({
+          ...g,
+          facts: g.facts.filter((f) =>
+            `${f.optionLabel} ${f.key ?? ''}`.toLowerCase().includes(q)),
+        }))
+        .filter((g) => g.facts.length);
+    },
+
+    orderByLabel() {
+      const key = this.editingRule?.order_by_key;
+      for (const g of this.orderByGroups('')) {
+        const hit = g.facts.find((f) => f.key === key);
+        if (hit) return hit.optionLabel;
+      }
+      return 'Title';
+    },
+
     /** Client-side narrowing for the custom dropdown, capped so a huge
      *  vocabulary (every cast member in the library) stays scrollable rather
      *  than becoming a thousand rendered rows. */

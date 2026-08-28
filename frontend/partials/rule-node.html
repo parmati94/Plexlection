@@ -73,27 +73,17 @@
       <template x-if="n.type === 'cmp' || n.type === 'agg_cmp'">
         <div class="flex flex-wrap items-center gap-1.5">
 
-          <!-- Fact, grouped by namespace -->
-          <!-- No x-model on these selects, deliberately.
-               x-model (and any :value binding) sets el.value while the nested
-               x-for inside the select still hasn't rendered a single <option>.
-               The browser can't match a value that doesn't exist yet, so it
-               falls back to index 0 and every saved rule opened showing the
-               first fact in the registry. Re-asserting the value from x-effect
-               doesn't help: that fires at the same too-early moment.
-               Binding :selected per option removes the ordering dependency —
-               each option decides its own state as it renders. -->
-          <select @change="n.node.key = $event.target.value; onFactChange(n.id)"
-                  class="max-w-[15rem] rounded-md border border-line-strong bg-sunken px-2 py-1 text-body-s focus:border-accent-500 focus:outline-none">
-            <template x-for="g in factOptionGroups()" :key="g.group">
-              <optgroup :label="g.group">
-                <template x-for="f in g.facts" :key="f.key">
-                  <option :value="f.key" :selected="f.key === n.node.key"
-                          x-text="f.optionLabel"></option>
-                </template>
-              </optgroup>
-            </template>
-          </select>
+          <!-- Fact picker: searchable combobox over the whole registry,
+               grouped by namespace. Replaced the native <select> once the
+               registry passed a hundred facts — scrolling an optgroup list
+               that long is how conditions were picked by accident. -->
+          <div x-data="combobox({
+                 label: () => factLabel(n.node.key),
+                 groups: (q) => factSearchGroups(q),
+                 select: (f) => { n.node.key = f.key; onFactChange(n.id); },
+                 isCurrent: (f) => f.key === n.node.key,
+                 placeholder: 'Search facts…',
+               })">{{> combobox }}</div>
 
           <!-- Operators, straight from the registry — never hardcoded. An
                aggregate comparison uses the fixed gt/gte/lt/lte set instead. -->
